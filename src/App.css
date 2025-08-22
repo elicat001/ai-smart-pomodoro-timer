@@ -1,1808 +1,1456 @@
-/* ===== CSS 变量定义 ===== */
-:root {
-  /* 颜色系统 */
-  --color-primary: #3B82F6;
-  --color-primary-dark: #2563EB;
-  --color-secondary: #6366F1;
-  --color-success: #10B981;
-  --color-success-dark: #059669;
-  --color-warning: #F59E0B;
-  --color-danger: #EF4444;
-  --color-danger-dark: #DC2626;
-  --color-info: #06B6D4;
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import './App.css';
+
+// 图标组件（使用Unicode字符代替Lucide图标）
+const Icons = {
+  Plus: () => <span>➕</span>,
+  Clock: () => <span>🕐</span>,
+  Flag: () => <span>🚩</span>,
+  Check: () => <span>✅</span>,
+  Edit: () => <span>✏️</span>,
+  Trash: () => <span>🗑️</span>,
+  Calendar: () => <span>📅</span>,
+  Target: () => <span>🎯</span>,
+  AlertCircle: () => <span>🔴</span>,
+  Brain: () => <span>🧠</span>,
+  ChevronDown: () => <span>🔽</span>,
+  ChevronRight: () => <span>▶️</span>,
+  Lightbulb: () => <span>💡</span>,
+  Timer: () => <span>⏲️</span>,
+  Play: () => <span>▶️</span>,
+  Pause: () => <span>⏸️</span>,
+  Square: () => <span>⏹️</span>,
+  Cloud: () => <span>☁️</span>,
+  CloudOff: () => <span>📱</span>,
+  Download: () => <span>⬇️</span>,
+  Upload: () => <span>⬆️</span>,
+  Settings: () => <span>⚙️</span>,
+  X: () => <span>❌</span>,
+  TrendingUp: () => <span>📈</span>,
+  Award: () => <span>🏆</span>,
+  Zap: () => <span>⚡</span>,
+  Star: () => <span>⭐</span>
+};
+
+// 任务类型识别的关键词映射
+const TASK_KEYWORDS = {
+  learning: ['学习', '研究', '阅读', '掌握', '理解', '熟悉', '了解', '学会', '教程', '课程'],
+  coding: ['编程', '开发', '代码', '实现', '调试', '优化', '重构', 'bug', '系统', 'erp', '平台', 'app', '网站', '软件', '程序', '功能', '接口', 'api', '数据库', '前端', '后端'],
+  writing: ['写', '撰写', '编写', '起草', '文档', '报告', '文章', '方案', '材料', '内容', '文案', '说明'],
+  meeting: ['会议', '讨论', '沟通', '汇报', '演讲', '分享', '交流', '谈话', '商议'],
+  analysis: ['分析', '调研', '研究', '评估', '整理', '总结', '梳理', '统计', '数据'],
+  design: ['设计', '规划', '策划', '构思', '原型', '界面', 'UI', 'UX', '布局', '视觉'],
+  practice: ['练习', '训练', '提升', '锻炼', '复习', '巩固', '操练', '演示'],
+  creative: ['创作', '创意', '构思', '头脑风暴', '想法', '创新', '灵感', '点子'],
+  review: ['检查', '审核', '校对', '测试', '验证', '确认', '审查', '核实'],
+  planning: ['计划', '安排', '组织', '筹备', '准备', '规划', '安排', '排期']
+};
+
+// 具体的任务分解策略
+const TASK_BREAKDOWN_STRATEGIES = {
+  learning: (taskText, duration) => {
+    const isComplexTopic = duration > 90;
+    return {
+      description: "运用费曼学习法，快速建立认知框架",
+      steps: isComplexTopic ? [
+        { text: "花5分钟浏览全局，找到核心概念清单", duration: Math.round(duration * 0.08) },
+        { text: "选择最重要的3个概念，直接查找实例", duration: Math.round(duration * 0.25) },
+        { text: "尝试用自己的话解释给假想的朋友", duration: Math.round(duration * 0.3) },
+        { text: "找到一个可以立即应用的场景", duration: Math.round(duration * 0.2) },
+        { text: "记录3个关键要点和1个疑问", duration: Math.round(duration * 0.17) }
+      ] : [
+        { text: "直接找到最关键的核心要点", duration: Math.round(duration * 0.3) },
+        { text: "找一个具体例子来理解", duration: Math.round(duration * 0.4) },
+        { text: "用自己的话复述一遍", duration: Math.round(duration * 0.3) }
+      ],
+      tips: [
+        "先看结论和总结，再看详细内容",
+        "边学边想现实应用场景",
+        "卡住时立即换个角度或资源"
+      ]
+    };
+  },
   
-  /* 优先级颜色 */
-  --priority-high: #DC2626;
-  --priority-high-bg: #FEF2F2;
-  --priority-high-border: #FCA5A5;
-  --priority-medium: #D97706;
-  --priority-medium-bg: #FFFBEB;
-  --priority-medium-border: #FCD34D;
-  --priority-low: #059669;
-  --priority-low-bg: #ECFDF5;
-  --priority-low-border: #A7F3D0;
+  coding: (taskText, duration) => {
+    const isBugFix = taskText.includes('bug') || taskText.includes('修复') || taskText.includes('调试');
+    const isNewFeature = taskText.includes('实现') || taskText.includes('开发') || taskText.includes('新增');
+    
+    if (isBugFix) {
+      return {
+        description: "采用系统性调试法，快速定位和解决问题",
+        steps: [
+          { text: "复现问题，记录具体现象", duration: Math.round(duration * 0.25) },
+          { text: "检查最近的代码变更", duration: Math.round(duration * 0.15) },
+          { text: "添加调试信息，定位问题代码段", duration: Math.round(duration * 0.35) },
+          { text: "修复并验证解决方案", duration: Math.round(duration * 0.25) }
+        ],
+        tips: [
+          "先找最可能的原因，不要从头调试",
+          "善用console.log和断点",
+          "修复后要测试相关功能"
+        ]
+      };
+    } else if (isNewFeature) {
+      return {
+        description: "采用最小可行产品思路，快速实现核心功能",
+        steps: [
+          { text: "明确最核心的功能需求", duration: Math.round(duration * 0.15) },
+          { text: "先写出最简单能跑的版本", duration: Math.round(duration * 0.45) },
+          { text: "测试核心流程是否正常", duration: Math.round(duration * 0.2) },
+          { text: "优化用户体验和边界情况", duration: Math.round(duration * 0.2) }
+        ],
+        tips: [
+          "先让功能跑起来，再考虑优雅",
+          "及时测试，避免积累太多问题",
+          "重要的是解决问题，不是炫技"
+        ]
+      };
+    } else {
+      return {
+        description: "采用渐进式开发，确保每一步都能验证",
+        steps: [
+          { text: "搭建基础框架，确认环境", duration: Math.round(duration * 0.2) },
+          { text: "实现核心逻辑", duration: Math.round(duration * 0.5) },
+          { text: "测试和调试", duration: Math.round(duration * 0.3) }
+        ],
+        tips: [
+          "经常保存和提交代码",
+          "一次只专注一个功能",
+          "代码要简洁易懂"
+        ]
+      };
+    }
+  },
   
-  /* 中性色 */
-  --color-gray-50: #F9FAFB;
-  --color-gray-100: #F3F4F6;
-  --color-gray-200: #E5E7EB;
-  --color-gray-300: #D1D5DB;
-  --color-gray-400: #9CA3AF;
-  --color-gray-500: #6B7280;
-  --color-gray-600: #4B5563;
-  --color-gray-700: #374151;
-  --color-gray-800: #1F2937;
-  --color-gray-900: #111827;
+  writing: (taskText, duration) => {
+    const isLongForm = duration > 60;
+    return {
+      description: "运用结构化写作法，确保思路清晰",
+      steps: isLongForm ? [
+        { text: "明确目标读者和核心信息", duration: Math.round(duration * 0.15) },
+        { text: "列出3-5个主要论点或章节", duration: Math.round(duration * 0.15) },
+        { text: "快速写出第一稿，不要纠结细节", duration: Math.round(duration * 0.45) },
+        { text: "检查逻辑结构和关键信息", duration: Math.round(duration * 0.15) },
+        { text: "润色语言和格式", duration: Math.round(duration * 0.1) }
+      ] : [
+        { text: "明确要表达的核心观点", duration: Math.round(duration * 0.2) },
+        { text: "快速写出完整草稿", duration: Math.round(duration * 0.6) },
+        { text: "检查和修改", duration: Math.round(duration * 0.2) }
+      ],
+      tips: [
+        "先写框架，再填内容",
+        "第一稿重在完整，不求完美",
+        "多用具体例子说明观点"
+      ]
+    };
+  },
   
-  /* 语义化颜色 */
-  --color-text-primary: var(--color-gray-700);
-  --color-text-secondary: var(--color-gray-500);
-  --color-text-muted: var(--color-gray-400);
-  --color-bg-primary: #FFFFFF;
-  --color-bg-secondary: var(--color-gray-50);
-  --color-bg-tertiary: var(--color-gray-100);
-  --color-border-light: var(--color-gray-200);
-  --color-border-medium: var(--color-gray-300);
+  meeting: (taskText, duration) => {
+    const isPresentation = taskText.includes('演讲') || taskText.includes('汇报') || taskText.includes('分享');
+    
+    if (isPresentation) {
+      return {
+        description: "采用金字塔原理，确保信息传达有效",
+        steps: [
+          { text: "明确听众最关心的1个问题", duration: Math.round(duration * 0.2) },
+          { text: "准备核心观点和3个支撑论据", duration: Math.round(duration * 0.4) },
+          { text: "预演关键部分，准备互动环节", duration: Math.round(duration * 0.4) }
+        ],
+        tips: [
+          "先说结论，再说理由",
+          "准备具体的数据和例子",
+          "预想可能的问题和回答"
+        ]
+      };
+    } else {
+      return {
+        description: "采用积极倾听法，确保沟通有效",
+        steps: [
+          { text: "准备要讨论的关键问题清单", duration: Math.round(duration * 0.3) },
+          { text: "会议中记录关键信息和行动项", duration: Math.round(duration * 0.5) },
+          { text: "会后5分钟整理结论和下一步", duration: Math.round(duration * 0.2) }
+        ],
+        tips: [
+          "会前明确目标和议程",
+          "多问开放性问题",
+          "确认重要信息是否理解正确"
+        ]
+      };
+    }
+  },
   
-  /* 渐变背景 */
-  --gradient-primary: linear-gradient(135deg, #3B82F6 0%, #6366F1 100%);
-  --gradient-success: linear-gradient(135deg, #10B981 0%, #059669 100%);
-  --gradient-danger: linear-gradient(135deg, #EF4444 0%, #F97316 100%);
-  --gradient-bg: linear-gradient(135deg, #EBF4FF 0%, #C7D2FE 100%);
+  analysis: (taskText, duration) => {
+    return {
+      description: "运用5W1H分析法，系统梳理信息",
+      steps: [
+        { text: "收集所有相关信息和数据", duration: Math.round(duration * 0.3) },
+        { text: "从What/Why/How三个角度分析", duration: Math.round(duration * 0.4) },
+        { text: "总结关键发现和可行建议", duration: Math.round(duration * 0.3) }
+      ],
+      tips: [
+        "先看全局再看细节",
+        "数据要客观，结论要基于事实",
+        "重点是可执行的建议"
+      ]
+    };
+  },
   
-  /* 阴影 */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07);
-  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
-  --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.1);
-  --shadow-2xl: 0 25px 50px rgba(0, 0, 0, 0.25);
+  design: (taskText, duration) => {
+    return {
+      description: "采用设计思维流程，从用户需求出发",
+      steps: [
+        { text: "明确用户场景和核心需求", duration: Math.round(duration * 0.25) },
+        { text: "快速绘制3个不同方案", duration: Math.round(duration * 0.4) },
+        { text: "选择最优方案细化关键细节", duration: Math.round(duration * 0.35) }
+      ],
+      tips: [
+        "先解决核心问题，再考虑体验",
+        "多画草图，少纠结工具",
+        "经常问自己：用户会怎么使用？"
+      ]
+    };
+  },
   
-  /* 圆角 */
-  --radius-sm: 0.25rem;
-  --radius-md: 0.5rem;
-  --radius-lg: 0.75rem;
-  --radius-xl: 1rem;
+  practice: (taskText, duration) => {
+    return {
+      description: "采用刻意练习法，专注薄弱环节",
+      steps: [
+        { text: "识别当前最需要改进的技能点", duration: Math.round(duration * 0.2) },
+        { text: "重复练习这个特定技能", duration: Math.round(duration * 0.6) },
+        { text: "记录练习结果和改进点", duration: Math.round(duration * 0.2) }
+      ],
+      tips: [
+        "质量比数量重要",
+        "离开舒适区，练习困难的部分",
+        "及时获得反馈并调整"
+      ]
+    };
+  },
   
-  /* 间距 */
-  --spacing-xs: 0.25rem;
-  --spacing-sm: 0.5rem;
-  --spacing-md: 0.75rem;
-  --spacing-lg: 1rem;
-  --spacing-xl: 1.5rem;
-  --spacing-2xl: 2rem;
-  --spacing-3xl: 3rem;
+  creative: (taskText, duration) => {
+    return {
+      description: "运用发散-收敛思维，激发创意灵感",
+      steps: [
+        { text: "设定明确的创作目标和约束", duration: Math.round(duration * 0.15) },
+        { text: "发散思维：产出大量想法不评判", duration: Math.round(duration * 0.45) },
+        { text: "收敛筛选：选择最有潜力的想法", duration: Math.round(duration * 0.25) },
+        { text: "快速制作原型或草稿", duration: Math.round(duration * 0.15) }
+      ],
+      tips: [
+        "先追求数量，再追求质量",
+        "借鉴不同领域的灵感",
+        "约束能激发更多创意"
+      ]
+    };
+  },
   
-  /* 字体 */
-  --font-family-base: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-  --font-family-mono: 'Courier New', Monaco, 'Andale Mono', monospace;
+  review: (taskText, duration) => {
+    return {
+      description: "采用系统检查法，确保质量标准",
+      steps: [
+        { text: "制定检查清单和标准", duration: Math.round(duration * 0.2) },
+        { text: "逐项检查，记录发现的问题", duration: Math.round(duration * 0.6) },
+        { text: "整理问题清单并确定优先级", duration: Math.round(duration * 0.2) }
+      ],
+      tips: [
+        "检查要有明确的标准",
+        "重点关注影响最大的问题",
+        "及时反馈给相关人员"
+      ]
+    };
+  }
+};
+
+// 自定义Hooks
+const useLocalStorage = (key, initialValue) => {
+  const [storedValue, setStoredValue] = useState(() => {
+    try {
+      const item = window.localStorage.getItem(`aipomodoro_${key}`);
+      return item ? JSON.parse(item) : initialValue;
+    } catch (error) {
+      console.error('读取localStorage失败:', error);
+      return initialValue;
+    }
+  });
+
+  const setValue = useCallback((value) => {
+    try {
+      const valueToStore = value instanceof Function ? value(storedValue) : value;
+      setStoredValue(valueToStore);
+      window.localStorage.setItem(`aipomodoro_${key}`, JSON.stringify(valueToStore));
+    } catch (error) {
+      console.error('保存localStorage失败:', error);
+    }
+  }, [key, storedValue]);
+
+  return [storedValue, setValue];
+};
+
+const usePomodoroTimer = () => {
+  const [activePomodoroId, setActivePomodoroId] = useState(null);
+  const [pomodoroTime, setPomodoroTime] = useState(0);
+  const [pomodoroStatus, setPomodoroStatus] = useState('idle');
+  const intervalRef = useRef(null);
+
+  const startPomodoro = useCallback((taskId, subtaskId, duration, taskName, subtaskName) => {
+    if (activePomodoroId) {
+      stopPomodoro();
+    }
+    
+    setActivePomodoroId(subtaskId || taskId);
+    setPomodoroTime(duration * 60);
+    setPomodoroStatus('running');
+    
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification(`🍅 开始专注：${subtaskName || taskName}`, {
+        body: `预计用时 ${duration} 分钟`,
+        icon: '/favicon.ico'
+      });
+    }
+  }, [activePomodoroId]);
+
+  const pausePomodoro = useCallback(() => {
+    setPomodoroStatus('paused');
+  }, []);
+
+  const resumePomodoro = useCallback(() => {
+    setPomodoroStatus('running');
+  }, []);
+
+  const stopPomodoro = useCallback(() => {
+    setActivePomodoroId(null);
+    setPomodoroTime(0);
+    setPomodoroStatus('idle');
+  }, []);
+
+  const completePomodoroSession = useCallback(() => {
+    setPomodoroStatus('completed');
+    setTimeout(() => {
+      stopPomodoro();
+    }, 3000);
+  }, [stopPomodoro]);
+
+  useEffect(() => {
+    if (pomodoroStatus === 'running' && pomodoroTime > 0) {
+      intervalRef.current = setInterval(() => {
+        setPomodoroTime(prev => {
+          if (prev <= 1) {
+            completePomodoroSession();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } else {
+      clearInterval(intervalRef.current);
+    }
+
+    return () => clearInterval(intervalRef.current);
+  }, [pomodoroStatus, pomodoroTime, completePomodoroSession]);
+
+  return {
+    activePomodoroId,
+    pomodoroTime,
+    pomodoroStatus,
+    startPomodoro,
+    pausePomodoro,
+    resumePomodoro,
+    stopPomodoro,
+    completePomodoroSession
+  };
+};
+
+const WorkOrganizer = () => {
+  // 基础状态
+  const [tasks, setTasks] = useLocalStorage('tasks', []);
+  const [newTask, setNewTask] = useState('');
+  const [selectedPriority, setSelectedPriority] = useState('medium');
+  const [selectedTime, setSelectedTime] = useState('');
+  const [estimatedDuration, setEstimatedDuration] = useState('');
+  const [filter, setFilter] = useState('all');
+  const [editingId, setEditingId] = useState(null);
+  const [editingText, setEditingText] = useState('');
+  const [analyzingTasks, setAnalyzingTasks] = useState(new Set());
+  const [expandedAnalysis, setExpandedAnalysis] = useState(new Set());
   
-  /* 动画 */
-  --transition-fast: 0.15s ease;
-  --transition-normal: 0.2s ease;
-  --transition-slow: 0.3s ease;
+  // 番茄钟相关
+  const pomodoroHook = usePomodoroTimer();
+  const [pomodoroHistory, setPomodoroHistory] = useLocalStorage('pomodoroHistory', []);
   
-  /* 断点 */
-  --breakpoint-sm: 640px;
-  --breakpoint-md: 768px;
-  --breakpoint-lg: 1024px;
-  --breakpoint-xl: 1280px;
-}
-
-/* ===== 基础样式重置 ===== */
-*,
-*::before,
-*::after {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-html {
-  line-height: 1.15;
-  -webkit-text-size-adjust: 100%;
-}
-
-body {
-  font-family: var(--font-family-base);
-  line-height: 1.5;
-  color: var(--color-text-primary);
-  background: var(--gradient-bg);
-  min-height: 100vh;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-/* ===== 应用容器 ===== */
-.app-container {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: var(--spacing-xl);
-  min-height: 100vh;
-}
-
-/* ===== 布局系统 ===== */
-.layout-grid {
-  display: grid;
-  grid-template-columns: 1fr 350px;
-  gap: var(--spacing-xl);
-}
-
-.main-content {
-  grid-column: 1;
-}
-
-.card {
-  background: var(--color-bg-primary);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-lg);
-  overflow: hidden;
-  transition: box-shadow var(--transition-normal);
-}
-
-.card:hover {
-  box-shadow: var(--shadow-xl);
-}
-
-/* ===== 头部统计区域 ===== */
-.header-stats {
-  background: var(--gradient-primary);
-  color: white;
-  padding: var(--spacing-2xl);
-  position: relative;
-  overflow: hidden;
-}
-
-.header-stats::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="1"/></pattern></defs><rect width="100" height="100" fill="url(%23grid)"/></svg>');
-  pointer-events: none;
-}
-
-.header-actions {
-  position: absolute;
-  top: var(--spacing-lg);
-  right: var(--spacing-lg);
-  display: flex;
-  gap: var(--spacing-sm);
-  z-index: 10;
-}
-
-.header-btn {
-  padding: var(--spacing-sm);
-  background: rgba(255, 255, 255, 0.15);
-  border: none;
-  border-radius: var(--radius-md);
-  color: white;
-  cursor: pointer;
-  transition: all var(--transition-normal);
-  backdrop-filter: blur(4px);
-}
-
-.header-btn:hover {
-  background: rgba(255, 255, 255, 0.25);
-  transform: translateY(-1px);
-}
-
-.header-btn:active {
-  transform: translateY(0);
-}
-
-.main-title {
-  font-size: 1.5rem;
-  font-weight: 700;
-  margin-bottom: var(--spacing-lg);
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  position: relative;
-  z-index: 10;
-}
-
-.subtitle {
-  font-size: 0.875rem;
-  font-weight: 400;
-  opacity: 0.85;
-  background: rgba(255, 255, 255, 0.2);
-  padding: 0.125rem var(--spacing-sm);
-  border-radius: var(--radius-sm);
-  margin-left: var(--spacing-sm);
-}
-
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: var(--spacing-lg);
-  position: relative;
-  z-index: 10;
-}
-
-.stat-card {
-  background: rgba(255, 255, 255, 0.15);
-  border-radius: var(--radius-md);
-  padding: var(--spacing-lg);
-  text-align: center;
-  transition: all var(--transition-normal);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.stat-card:hover {
-  background: rgba(255, 255, 255, 0.2);
-  transform: translateY(-2px);
-}
-
-.stat-number {
-  font-size: 1.5rem;
-  font-weight: 700;
-  margin-bottom: var(--spacing-xs);
-}
-
-.stat-green { color: #86EFAC; }
-.stat-yellow { color: #FDE047; }
-.stat-red { color: #FCA5A5; }
-.stat-purple { color: #D8B4FE; }
-.stat-cyan { color: #7DD3FC; }
-
-.stat-label {
-  font-size: 0.75rem;
-  opacity: 0.9;
-}
-
-/* ===== 番茄钟状态栏 ===== */
-.pomodoro-status {
-  background: var(--gradient-danger);
-  color: white;
-  padding: var(--spacing-lg);
-  position: relative;
-  overflow: hidden;
-}
-
-.pomodoro-status::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: radial-gradient(circle at 30% 50%, rgba(255, 255, 255, 0.1) 0%, transparent 50%);
-  pointer-events: none;
-}
-
-.pomodoro-info {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-md);
-  margin-bottom: var(--spacing-sm);
-  position: relative;
-  z-index: 10;
-}
-
-.pomodoro-indicator {
-  width: 0.75rem;
-  height: 0.75rem;
-  background: white;
-  border-radius: 50%;
-  animation: pulse 2s infinite;
-  box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
-}
-
-@keyframes pulse {
-  0%, 100% { 
-    opacity: 1; 
-    transform: scale(1);
-  }
-  50% { 
-    opacity: 0.7; 
-    transform: scale(1.1);
-  }
-}
-
-.pomodoro-text {
-  font-weight: 600;
-  font-size: 1rem;
-}
-
-.pomodoro-controls {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  position: relative;
-  z-index: 10;
-}
-
-.pomodoro-timer {
-  font-size: 1.75rem;
-  font-family: var(--font-family-mono);
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-}
-
-.pomodoro-buttons {
-  display: flex;
-  gap: var(--spacing-sm);
-}
-
-.pomodoro-btn {
-  padding: var(--spacing-sm);
-  background: rgba(255, 255, 255, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  border-radius: var(--radius-md);
-  color: white;
-  cursor: pointer;
-  transition: all var(--transition-normal);
-  backdrop-filter: blur(4px);
-}
-
-.pomodoro-btn:hover {
-  background: rgba(255, 255, 255, 0.3);
-  transform: translateY(-1px);
-}
-
-.pomodoro-progress {
-  width: 100%;
-  height: 0.5rem;
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-  margin-top: var(--spacing-sm);
-  position: relative;
-  z-index: 10;
-}
-
-.pomodoro-progress-bar {
-  height: 100%;
-  background: linear-gradient(90deg, white, rgba(255, 255, 255, 0.8));
-  border-radius: var(--radius-sm);
-  transition: width 1s linear;
-  box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
-}
-
-/* ===== 表单组件 ===== */
-.add-task-section {
-  padding: var(--spacing-xl);
-  border-bottom: 1px solid var(--color-border-light);
-  background: var(--color-bg-secondary);
-}
-
-.add-task-form {
-  display: flex;
-  gap: var(--spacing-md);
-  margin-bottom: var(--spacing-sm);
-}
-
-.task-input {
-  flex: 1;
-  padding: var(--spacing-md) var(--spacing-lg);
-  border: 1px solid var(--color-border-medium);
-  border-radius: var(--radius-md);
-  font-size: 1rem;
-  transition: all var(--transition-normal);
-  background: white;
-}
-
-.task-input:focus {
-  outline: none;
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-  transform: translateY(-1px);
-}
-
-.priority-select,
-.time-input,
-.duration-input {
-  padding: var(--spacing-md);
-  border: 1px solid var(--color-border-medium);
-  border-radius: var(--radius-md);
-  font-size: 1rem;
-  background: white;
-  transition: all var(--transition-normal);
-}
-
-.priority-select:focus,
-.time-input:focus,
-.duration-input:focus {
-  outline: none;
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
-
-.duration-input {
-  width: 100px;
-}
-
-.add-btn {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-md) var(--spacing-lg);
-  background: var(--gradient-primary);
-  color: white;
-  border: none;
-  border-radius: var(--radius-md);
-  font-weight: 500;
-  cursor: pointer;
-  transition: all var(--transition-normal);
-  box-shadow: var(--shadow-sm);
-}
-
-.add-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
-}
-
-.add-btn:active {
-  transform: translateY(0);
-}
-
-.tip-text {
-  font-size: 0.875rem;
-  color: var(--color-text-secondary);
-  background: rgba(59, 130, 246, 0.1);
-  padding: var(--spacing-sm) var(--spacing-md);
-  border-radius: var(--radius-md);
-  border-left: 3px solid var(--color-primary);
-}
-
-/* ===== 过滤器 ===== */
-.filter-section {
-  padding: var(--spacing-lg) var(--spacing-xl);
-  border-bottom: 1px solid var(--color-border-light);
-  background: white;
-}
-
-.filter-buttons {
-  display: flex;
-  gap: var(--spacing-sm);
-}
-
-.filter-btn {
-  padding: var(--spacing-sm) var(--spacing-lg);
-  border: 1px solid var(--color-border-medium);
-  border-radius: var(--radius-md);
-  font-size: 0.875rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all var(--transition-normal);
-  color: var(--color-text-secondary);
-  background: white;
-}
-
-.filter-btn:hover {
-  background: var(--color-bg-tertiary);
-  border-color: var(--color-primary);
-  transform: translateY(-1px);
-}
-
-.filter-btn.active {
-  background: var(--color-primary);
-  color: white;
-  border-color: var(--color-primary);
-  box-shadow: var(--shadow-sm);
-}
-
-/* ===== 任务列表 ===== */
-.tasks-section {
-  padding: var(--spacing-xl);
-}
-
-.empty-state {
-  text-align: center;
-  padding: var(--spacing-3xl) var(--spacing-lg);
-  color: var(--color-text-secondary);
-}
-
-.empty-state span {
-  font-size: 4rem;
-  margin-bottom: var(--spacing-lg);
-  display: block;
-  filter: grayscale(20%);
-}
-
-.empty-title {
-  font-size: 1.125rem;
-  font-weight: 600;
-  margin-bottom: var(--spacing-sm);
-  color: var(--color-text-primary);
-}
-
-.empty-subtitle {
-  font-size: 0.875rem;
-  color: var(--color-text-muted);
-}
-
-.tasks-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-lg);
-}
-
-.task-item {
-  border: 2px solid var(--color-border-light);
-  border-radius: var(--radius-lg);
-  background: white;
-  transition: all var(--transition-normal);
-  overflow: hidden;
-}
-
-.task-item:hover {
-  border-color: var(--color-primary);
-  box-shadow: var(--shadow-md);
-  transform: translateY(-2px);
-}
-
-.task-item.completed {
-  background: var(--color-bg-secondary);
-  border-color: var(--color-border-medium);
-  opacity: 0.8;
-}
-
-.task-header {
-  padding: var(--spacing-lg);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--spacing-lg);
-}
-
-.task-main {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-md);
-  flex: 1;
-  min-width: 0;
-}
-
-.task-checkbox {
-  width: 1.5rem;
-  height: 1.5rem;
-  border: 2px solid var(--color-border-medium);
-  border-radius: 50%;
-  background: white;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all var(--transition-normal);
-  flex-shrink: 0;
-}
-
-.task-checkbox:hover {
-  border-color: var(--color-success);
-  transform: scale(1.1);
-}
-
-.task-checkbox.checked {
-  background: var(--color-success);
-  border-color: var(--color-success);
-  color: white;
-  animation: checkBounce 0.3s ease;
-}
-
-@keyframes checkBounce {
-  0% { transform: scale(1); }
-  50% { transform: scale(1.2); }
-  100% { transform: scale(1); }
-}
-
-/* 优先级徽章 */
-.priority-badge {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-xs);
-  padding: var(--spacing-xs) var(--spacing-md);
-  border-radius: 9999px;
-  border: 1px solid;
-  font-size: 0.75rem;
-  font-weight: 600;
-  flex-shrink: 0;
-  text-transform: uppercase;
-  letter-spacing: 0.025em;
-}
-
-.high-priority {
-  color: var(--priority-high);
-  background: var(--priority-high-bg);
-  border-color: var(--priority-high-border);
-}
-
-.medium-priority {
-  color: var(--priority-medium);
-  background: var(--priority-medium-bg);
-  border-color: var(--priority-medium-border);
-}
-
-.low-priority {
-  color: var(--priority-low);
-  background: var(--priority-low-bg);
-  border-color: var(--priority-low-border);
-}
-
-.default-priority {
-  color: var(--color-text-secondary);
-  background: var(--color-bg-secondary);
-  border-color: var(--color-border-medium);
-}
-
-.task-time,
-.task-duration {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-xs);
-  font-size: 0.875rem;
-  color: var(--color-text-secondary);
-  flex-shrink: 0;
-}
-
-.task-duration {
-  color: #7C3AED;
-  background: #F3E8FF;
-  padding: var(--spacing-xs) var(--spacing-sm);
-  border-radius: var(--radius-sm);
-  font-weight: 500;
-}
-
-.task-text-container {
-  flex: 1;
-  min-width: 0;
-}
-
-.task-text {
-  cursor: pointer;
-  transition: color var(--transition-normal);
-  display: block;
-  word-break: break-word;
-  font-weight: 500;
-}
-
-.task-text:hover {
-  color: var(--color-primary);
-}
-
-.completed-text {
-  text-decoration: line-through;
-  color: var(--color-text-muted);
-}
-
-.task-edit-input {
-  width: 100%;
-  padding: var(--spacing-xs) var(--spacing-sm);
-  border: 1px solid var(--color-border-medium);
-  border-radius: var(--radius-sm);
-  font-size: 1rem;
-  font-weight: 500;
-}
-
-.task-edit-input:focus {
-  outline: none;
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
-}
-
-.task-actions {
-  display: flex;
-  gap: var(--spacing-xs);
-  flex-shrink: 0;
-}
-
-.action-btn {
-  padding: var(--spacing-sm);
-  border: none;
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: all var(--transition-normal);
-  background: transparent;
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.action-btn:hover {
-  transform: translateY(-1px);
-}
-
-.action-btn:active {
-  transform: translateY(0);
-}
-
-.pomodoro-btn {
-  color: var(--color-danger);
-}
-
-.pomodoro-btn:hover,
-.pomodoro-btn.active {
-  background: var(--priority-high-bg);
-  color: var(--priority-high);
-}
-
-.ai-btn {
-  color: #7C3AED;
-}
-
-.ai-btn:hover {
-  background: #F3E8FF;
-  color: #6D28D9;
-}
-
-.edit-btn {
-  color: var(--color-text-secondary);
-}
-
-.edit-btn:hover {
-  background: #DBEAFE;
-  color: var(--color-primary);
-}
-
-.delete-btn {
-  color: var(--color-text-secondary);
-}
-
-.delete-btn:hover {
-  background: var(--priority-high-bg);
-  color: var(--color-danger);
-}
-
-.spinner {
-  animation: spin 1s linear infinite;
-  display: inline-block;
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-/* ===== AI分析区域 ===== */
-.analysis-section {
-  border-top: 1px solid var(--color-border-light);
-  background: linear-gradient(135deg, #F3E8FF 0%, #DBEAFE 100%);
-  padding: var(--spacing-lg);
-  animation: slideDown 0.3s ease;
-}
-
-@keyframes slideDown {
-  from {
-    opacity: 0;
-    transform: translateY(-10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.analysis-header {
-  margin-bottom: var(--spacing-lg);
-}
-
-.analysis-title {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  font-weight: 600;
-  color: var(--color-text-primary);
-  margin-bottom: var(--spacing-sm);
-  font-size: 1rem;
-}
-
-.analysis-duration {
-  font-size: 0.875rem;
-  font-weight: 400;
-  color: #7C3AED;
-  background: rgba(124, 58, 237, 0.1);
-  padding: 0.125rem var(--spacing-sm);
-  border-radius: var(--radius-sm);
-  margin-left: var(--spacing-sm);
-}
-
-.analysis-text {
-  color: var(--color-text-secondary);
-  font-size: 0.875rem;
-  line-height: 1.6;
-  background: rgba(255, 255, 255, 0.7);
-  padding: var(--spacing-md);
-  border-radius: var(--radius-md);
-  border-left: 3px solid #7C3AED;
-}
-
-.analysis-content {
-  display: grid;
-  grid-template-columns: 2fr 1fr;
-  gap: var(--spacing-lg);
-}
-
-.steps-section,
-.tips-section {
-  background: white;
-  border-radius: var(--radius-md);
-  padding: var(--spacing-lg);
-  box-shadow: var(--shadow-sm);
-}
-
-.steps-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: var(--spacing-md);
-}
-
-.steps-title,
-.tips-title {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  font-weight: 600;
-  color: var(--color-text-primary);
-  font-size: 0.875rem;
-}
-
-.start-btn {
-  font-size: 0.75rem;
-  padding: var(--spacing-xs) var(--spacing-sm);
-  background: var(--gradient-primary);
-  color: white;
-  border: none;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: all var(--transition-normal);
-  font-weight: 500;
-}
-
-.start-btn:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-sm);
-}
-
-/* 子任务列表 */
-.subtasks-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-md);
-}
-
-.subtask-item {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-md);
-  padding: var(--spacing-md);
-  background: var(--color-bg-secondary);
-  border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-md);
-  transition: all var(--transition-normal);
-}
-
-.subtask-item:hover {
-  background: white;
-  border-color: var(--color-primary);
-  box-shadow: var(--shadow-sm);
-}
-
-.subtask-checkbox {
-  width: 1.25rem;
-  height: 1.25rem;
-  border: 1px solid var(--color-border-medium);
-  border-radius: var(--radius-sm);
-  background: white;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all var(--transition-normal);
-  flex-shrink: 0;
-}
-
-.subtask-checkbox:hover {
-  border-color: var(--color-success);
-}
-
-.subtask-checkbox.checked {
-  background: var(--color-success);
-  border-color: var(--color-success);
-  color: white;
-}
-
-.subtask-content {
-  flex: 1;
-  min-width: 0;
-}
-
-.subtask-text {
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--color-text-primary);
-  margin-bottom: var(--spacing-xs);
-  word-break: break-word;
-}
-
-.subtask-info {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  flex-wrap: wrap;
-}
-
-.subtask-duration {
-  font-size: 0.75rem;
-  color: var(--color-danger);
-  background: var(--priority-high-bg);
-  padding: 0.125rem var(--spacing-sm);
-  border-radius: var(--radius-sm);
-  font-weight: 500;
-}
-
-.subtask-time {
-  font-size: 0.75rem;
-  color: var(--color-success);
-  font-weight: 500;
-}
-
-.subtask-play-btn {
-  padding: var(--spacing-sm);
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--color-danger);
-  cursor: pointer;
-  transition: all var(--transition-normal);
-  flex-shrink: 0;
-}
-
-.subtask-play-btn:hover,
-.subtask-play-btn.active {
-  background: var(--priority-high-bg);
-  transform: scale(1.1);
-}
-
-/* 进度条 */
-.progress-section {
-  margin-top: var(--spacing-lg);
-  padding-top: var(--spacing-lg);
-  border-top: 1px solid var(--color-border-light);
-}
-
-.progress-info {
-  display: flex;
-  justify-content: space-between;
-  font-size: 0.75rem;
-  color: var(--color-text-secondary);
-  margin-bottom: var(--spacing-xs);
-  font-weight: 500;
-}
-
-.progress-bar {
-  width: 100%;
-  height: 0.5rem;
-  background: var(--color-border-light);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-}
-
-.progress-fill {
-  height: 100%;
-  background: var(--gradient-success);
-  border-radius: var(--radius-sm);
-  transition: width 0.5s ease;
-  position: relative;
-}
-
-.progress-fill::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
-  animation: shimmer 2s infinite;
-}
-
-@keyframes shimmer {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(100%); }
-}
-
-.steps-preview {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-sm);
-}
-
-.step-preview {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--spacing-md);
-  background: var(--color-bg-secondary);
-  border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-md);
-  transition: all var(--transition-normal);
-}
-
-.step-preview:hover {
-  background: white;
-  border-color: var(--color-primary);
-  transform: translateX(4px);
-}
-
-.optimized-step {
-  background: linear-gradient(135deg, #F0FDF4 0%, #ECFDF5 100%);
-  border-color: #BBF7D0;
-  box-shadow: 0 2px 4px rgba(16, 185, 129, 0.1);
-}
-
-.step-text {
-  flex: 1;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--color-text-primary);
-  margin-right: var(--spacing-md);
-}
-
-.step-duration {
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--color-danger);
-  background: var(--priority-high-bg);
-  padding: var(--spacing-xs) var(--spacing-sm);
-  border-radius: var(--radius-sm);
-  flex-shrink: 0;
-}
-
-.tips-list {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-sm);
-}
-
-.tip-item {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-sm);
-  background: var(--color-bg-secondary);
-  border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-sm);
-  font-size: 0.875rem;
-  color: var(--color-text-primary);
-  transition: all var(--transition-normal);
-}
-
-.tip-item:hover {
-  background: white;
-  border-color: var(--color-warning);
-  transform: translateX(2px);
-}
-
-.tip-icon {
-  font-size: 1rem;
-  color: var(--color-warning);
-  flex-shrink: 0;
-}
-
-/* ===== 侧边栏 ===== */
-.sidebar {
-  grid-column: 2;
-}
-
-.sidebar-card {
-  background: white;
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-lg);
-  padding: var(--spacing-xl);
-  position: sticky;
-  top: var(--spacing-xl);
-  transition: box-shadow var(--transition-normal);
-}
-
-.sidebar-card:hover {
-  box-shadow: var(--shadow-xl);
-}
-
-.sidebar-section {
-  margin-bottom: var(--spacing-2xl);
-}
-
-.sidebar-section:last-child {
-  margin-bottom: 0;
-}
-
-.sidebar-title {
-  font-size: 1.125rem;
-  font-weight: 700;
-  color: var(--color-text-primary);
-  margin-bottom: var(--spacing-lg);
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-}
-
-.sidebar-emoji {
-  font-size: 1.5rem;
-}
-
-/* 今日目标 */
-.goal-section {
-  text-align: center;
-}
-
-.goal-progress {
-  margin-bottom: var(--spacing-lg);
-}
-
-.goal-numbers {
-  display: flex;
-  align-items: baseline;
-  justify-content: center;
-  gap: var(--spacing-xs);
-  margin-bottom: var(--spacing-sm);
-}
-
-.goal-current {
-  font-size: 2.5rem;
-  font-weight: 800;
-  color: var(--color-primary);
-  text-shadow: 0 2px 4px rgba(59, 130, 246, 0.1);
-}
-
-.goal-separator {
-  font-size: 1.5rem;
-  color: var(--color-text-muted);
-}
-
-.goal-target {
-  font-size: 1.5rem;
-  font-weight: 600;
-  color: var(--color-text-secondary);
-}
-
-.goal-label {
-  color: var(--color-text-secondary);
-  font-size: 0.875rem;
-  font-weight: 500;
-}
-
-.goal-progress-bar {
-  width: 100%;
-  height: 0.75rem;
-  background: var(--color-border-light);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-  margin-bottom: var(--spacing-lg);
-}
-
-.goal-progress-fill {
-  height: 100%;
-  background: var(--gradient-primary);
-  border-radius: var(--radius-sm);
-  transition: width 0.5s ease;
-  position: relative;
-}
-
-.goal-progress-fill::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
-  animation: shimmer 3s infinite;
-}
-
-.goal-controls {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--spacing-lg);
-}
-
-.goal-btn {
-  width: 2rem;
-  height: 2rem;
-  border-radius: 50%;
-  border: 1px solid var(--color-border-medium);
-  background: white;
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: 1rem;
-  transition: all var(--transition-normal);
-}
-
-.goal-btn:hover {
-  border-color: var(--color-primary);
-  color: var(--color-primary);
-  transform: scale(1.1);
-  box-shadow: var(--shadow-sm);
-}
-
-.goal-text {
-  font-size: 0.875rem;
-  color: var(--color-text-secondary);
-  font-weight: 500;
-}
-
-/* 效率分析 */
-.efficiency-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--spacing-lg);
-}
-
-.efficiency-item {
-  text-align: center;
-  padding: var(--spacing-lg);
-  background: var(--color-bg-secondary);
-  border-radius: var(--radius-md);
-  transition: all var(--transition-normal);
-  border: 1px solid var(--color-border-light);
-}
-
-.efficiency-item:hover {
-  background: white;
-  border-color: var(--color-primary);
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-sm);
-}
-
-.efficiency-number {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: var(--color-text-primary);
-  margin-bottom: var(--spacing-xs);
-}
-
-.efficiency-label {
-  font-size: 0.75rem;
-  color: var(--color-text-secondary);
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-/* 周趋势图 */
-.week-chart {
-  display: flex;
-  justify-content: space-between;
-  align-items: end;
-  height: 80px;
-  padding: var(--spacing-sm) var(--spacing-sm) var(--spacing-sm);
-  background: var(--color-bg-secondary);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--color-border-light);
-}
-
-.week-day {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  flex: 1;
-}
-
-.week-bar-container {
-  height: 60px;
-  display: flex;
-  align-items: end;
-  margin-bottom: var(--spacing-xs);
-}
-
-.week-bar {
-  width: 1rem;
-  background: var(--gradient-primary);
-  border-radius: var(--radius-sm);
-  min-height: 4px;
-  transition: all var(--transition-slow);
-  position: relative;
-  box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);
-}
-
-.week-bar::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.3), transparent);
-  border-radius: var(--radius-sm);
-}
-
-.week-bar:hover {
-  transform: scaleY(1.1);
-  box-shadow: 0 4px 8px rgba(59, 130, 246, 0.3);
-}
-
-.week-count {
-  font-size: 0.75rem;
-  font-weight: 700;
-  color: var(--color-text-primary);
-  margin-bottom: 0.125rem;
-}
-
-.week-label {
-  font-size: 0.6875rem;
-  color: var(--color-text-secondary);
-  font-weight: 500;
-  text-transform: uppercase;
-}
-
-/* 成就系统 */
-.achievements-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--spacing-md);
-}
-
-.achievement-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: var(--spacing-md);
-  background: linear-gradient(135deg, #FEF3C7, #FDE68A);
-  border-radius: var(--radius-md);
-  text-align: center;
-  transition: all var(--transition-normal);
-  border: 1px solid #FCD34D;
-}
-
-.achievement-item:hover {
-  transform: translateY(-2px) scale(1.02);
-  box-shadow: var(--shadow-md);
-  background: linear-gradient(135deg, #FDE68A, #F59E0B);
-}
-
-.achievement-icon {
-  font-size: 1.5rem;
-  margin-bottom: var(--spacing-xs);
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
-}
-
-.achievement-name {
-  font-size: 0.6875rem;
-  font-weight: 600;
-  color: #92400E;
-  text-transform: uppercase;
-  letter-spacing: 0.025em;
-}
-
-.achievement-empty {
-  grid-column: 1 / -1;
-  text-align: center;
-  padding: var(--spacing-2xl) var(--spacing-lg);
-  color: var(--color-text-muted);
-}
-
-.achievement-empty span {
-  font-size: 2rem;
-  display: block;
-  margin-bottom: var(--spacing-sm);
-  filter: grayscale(50%);
-}
-
-.achievement-empty p {
-  font-size: 0.875rem;
-  font-weight: 500;
-}
-
-/* 使用提示和历史记录 */
-.sidebar-tips-title,
-.sidebar-history-title {
-  font-weight: 600;
-  color: var(--color-text-primary);
-  margin-bottom: var(--spacing-md);
-  font-size: 1rem;
-}
-
-.sidebar-tips-list {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-sm);
-}
-
-.sidebar-tips-list li {
-  font-size: 0.75rem;
-  color: var(--color-text-secondary);
-  padding: var(--spacing-sm);
-  background: var(--color-bg-secondary);
-  border-radius: var(--radius-sm);
-  border-left: 3px solid var(--color-primary);
-  transition: all var(--transition-normal);
-}
-
-.sidebar-tips-list li:hover {
-  background: white;
-  border-left-color: var(--color-warning);
-  transform: translateX(2px);
-}
-
-.sidebar-history-list {
-  max-height: 12rem;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-md);
-}
-
-.sidebar-history-list::-webkit-scrollbar {
-  width: 4px;
-}
-
-.sidebar-history-list::-webkit-scrollbar-track {
-  background: var(--color-bg-secondary);
-  border-radius: var(--radius-sm);
-}
-
-.sidebar-history-list::-webkit-scrollbar-thumb {
-  background: var(--color-border-medium);
-  border-radius: var(--radius-sm);
-}
-
-.sidebar-history-list::-webkit-scrollbar-thumb:hover {
-  background: var(--color-text-secondary);
-}
-
-.history-item {
-  padding: var(--spacing-md);
-  background: var(--color-bg-secondary);
-  border-radius: var(--radius-md);
-  transition: all var(--transition-normal);
-  border: 1px solid var(--color-border-light);
-}
-
-.history-item:hover {
-  background: white;
-  border-color: var(--color-primary);
-  transform: translateX(2px);
-}
-
-.history-task {
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--color-text-primary);
-  margin-bottom: var(--spacing-sm);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.history-info {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--spacing-sm);
-}
-
-.history-duration {
-  font-size: 0.75rem;
-  color: var(--color-danger);
-  background: var(--priority-high-bg);
-  padding: 0.125rem var(--spacing-sm);
-  border-radius: var(--radius-sm);
-  font-weight: 500;
-}
-
-.history-time {
-  font-size: 0.75rem;
-  color: var(--color-text-muted);
-  font-weight: 500;
-}
-
-.history-empty {
-  text-align: center;
-  padding: var(--spacing-2xl) 0;
-  color: var(--color-text-muted);
-}
-
-.history-empty span {
-  font-size: 2rem;
-  margin-bottom: var(--spacing-sm);
-  display: block;
-  filter: grayscale(30%);
-}
-
-.history-empty p {
-  font-size: 0.875rem;
-  margin-bottom: var(--spacing-xs);
-  font-weight: 500;
-}
-
-.history-empty-sub {
-  font-size: 0.75rem;
-  color: var(--color-border-medium);
-}
-
-/* ===== 模态框 ===== */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 50;
-  padding: var(--spacing-lg);
-  backdrop-filter: blur(4px);
-}
-
-.modal-content {
-  background: white;
-  border-radius: var(--radius-xl);
-  padding: var(--spacing-2xl);
-  max-width: 28rem;
-  width: 100%;
-  box-shadow: var(--shadow-2xl);
-  animation: modalSlideIn 0.3s ease;
-  border: 1px solid var(--color-border-light);
-}
-
-@keyframes modalSlideIn {
-  from {
-    opacity: 0;
-    transform: translateY(-20px) scale(0.95);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-.modal-text-center {
-  text-align: center;
-}
-
-.modal-icon {
-  font-size: 4rem;
-  margin-bottom: var(--spacing-lg);
-  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.1));
-}
-
-.modal-content h3 {
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: var(--color-text-primary);
-  margin-bottom: var(--spacing-sm);
-}
-
-.modal-content p {
-  color: var(--color-text-secondary);
-  font-size: 0.875rem;
-  margin-bottom: var(--spacing-xl);
-  line-height: 1.6;
-}
-
-.modal-buttons {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-md);
-}
-
-.btn {
-  width: 100%;
-  padding: var(--spacing-md) var(--spacing-lg);
-  border: none;
-  border-radius: var(--radius-md);
-  font-weight: 600;
-  cursor: pointer;
-  transition: all var(--transition-normal);
-  font-size: 0.875rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--spacing-sm);
-}
-
-.btn-green {
-  background: var(--color-success);
-  color: white;
-}
-
-.btn-green:hover {
-  background: var(--color-success-dark);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-md);
-}
-
-.btn-blue {
-  background: var(--color-primary);
-  color: white;
-}
-
-.btn-blue:hover {
-  background: var(--color-primary-dark);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-md);
-}
-
-.btn-gray {
-  color: var(--color-text-secondary);
-  background: transparent;
-  border: 1px solid var(--color-border-medium);
-}
-
-.btn-gray:hover {
-  color: var(--color-text-primary);
-  background: var(--color-bg-secondary);
-  border-color: var(--color-border-medium);
-}
-
-/* ===== 响应式设计 ===== */
-@media (max-width: 1024px) {
-  .layout-grid {
-    grid-template-columns: 1fr;
-  }
+  // 统计和目标
+  const [dailyGoal, setDailyGoal] = useLocalStorage('dailyGoal', 6);
+  const [focusStreak, setFocusStreak] = useLocalStorage('focusStreak', 0);
+  const [appStats, setAppStats] = useLocalStorage('appStats', {
+    daysUsed: 1,
+    totalTasks: 0,
+    totalPomodoros: 0,
+    firstUse: new Date().toISOString()
+  });
   
-  .sidebar {
-    grid-column: 1;
-  }
-  
-  .sidebar-card {
-    position: static;
-  }
-  
-  .analysis-content {
-    grid-template-columns: 1fr;
-  }
-}
+  // UI状态
+  const [showBackupReminder, setShowBackupReminder] = useState(false);
+  const [isLoggedIn] = useState(false);
 
-@media (max-width: 768px) {
-  .app-container {
-    padding: var(--spacing-lg);
-  }
-  
-  .header-stats {
-    padding: var(--spacing-xl);
-  }
-  
-  .stats-grid {
-    grid-template-columns: repeat(3, 1fr);
-  }
-  
-  .add-task-form {
-    flex-direction: column;
-  }
-  
-  .task-main {
-    flex-wrap: wrap;
-    gap: var(--spacing-sm);
-  }
-  
-  .task-actions {
-    flex-wrap: wrap;
-  }
-  
-  .efficiency-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .achievements-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .modal-content {
-    margin: var(--spacing-lg);
-    padding: var(--spacing-xl);
-  }
-}
+  // 智能识别任务类型
+  const identifyTaskType = useCallback((taskText) => {
+    const text = taskText.toLowerCase();
+    
+    for (const [type, keywords] of Object.entries(TASK_KEYWORDS)) {
+      if (keywords.some(keyword => text.includes(keyword))) {
+        return type;
+      }
+    }
+    
+    return 'general';
+  }, []);
 
-@media (max-width: 640px) {
-  .stats-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  
-  .task-header {
-    flex-direction: column;
-    align-items: stretch;
-    gap: var(--spacing-md);
-  }
-  
-  .task-main {
-    order: 1;
-  }
-  
-  .task-actions {
-    order: 2;
-    justify-content: center;
-  }
-  
-  .goal-controls {
-    flex-direction: column;
-    gap: var(--spacing-sm);
-  }
-  
-  .week-chart {
-    height: 60px;
-  }
-  
-  .week-bar-container {
-    height: 40px;
-  }
-}
+  // 改进的AI分析功能
+  const analyzeTask = useCallback(async (taskId, taskText, duration = 60) => {
+    // 立即创建本地副本，避免闭包问题
+    const currentTaskId = taskId;
+    const currentTaskText = taskText;
+    const currentDuration = duration;
+    
+    setAnalyzingTasks(prev => new Set([...prev, currentTaskId]));
+    
+    try {
+      // 模拟分析延迟
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      const taskType = identifyTaskType(currentTaskText);
+      const strategy = TASK_BREAKDOWN_STRATEGIES[taskType];
+      
+      let analysis;
+      if (strategy) {
+        const result = strategy(currentTaskText, currentDuration);
+        analysis = {
+          taskType,
+          analysis: `基于任务特点"${currentTaskText}"，识别为${getTaskTypeLabel(taskType)}类型。${result.description}`,
+          totalDuration: currentDuration,
+          steps: result.steps.map((step, index) => ({
+            ...step,
+            order: index + 1,
+            id: `${currentTaskId}-step-${index}` // 添加唯一ID
+          })),
+          tips: result.tips,
+          analyzedAt: Date.now() // 添加分析时间戳
+        };
+      } else {
+        // 通用分解逻辑
+        analysis = {
+          taskType: 'general',
+          analysis: `为"${currentTaskText}"制定了通用执行方案，专注核心目标的实现`,
+          totalDuration: currentDuration,
+          steps: [
+            { 
+              text: "明确具体的成功标准", 
+              duration: Math.round(currentDuration * 0.2), 
+              order: 1,
+              id: `${currentTaskId}-step-0`
+            },
+            { 
+              text: "执行核心工作内容", 
+              duration: Math.round(currentDuration * 0.6), 
+              order: 2,
+              id: `${currentTaskId}-step-1`
+            },
+            { 
+              text: "检查结果并记录要点", 
+              duration: Math.round(currentDuration * 0.2), 
+              order: 3,
+              id: `${currentTaskId}-step-2`
+            }
+          ],
+          tips: [
+            "专注最重要的部分",
+            "及时调整方法",
+            "记录关键成果"
+          ],
+          analyzedAt: Date.now()
+        };
+      }
+      
+      // 确保状态更新的原子性
+      setTasks(prevTasks => {
+        const newTasks = prevTasks.map(task => {
+          if (task.id === currentTaskId) {
+            return { 
+              ...task, 
+              aiAnalysis: { ...analysis } // 创建新对象避免引用共享
+            };
+          }
+          return task;
+        });
+        return newTasks;
+      });
+      
+      setExpandedAnalysis(prev => new Set([...prev, currentTaskId]));
+      
+    } catch (error) {
+      console.error('AI分析失败:', error);
+    } finally {
+      setAnalyzingTasks(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(currentTaskId);
+        return newSet;
+      });
+    }
+  }, [identifyTaskType]);
 
-/* ===== 无障碍改进 ===== */
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
-}
+  const getTaskTypeLabel = (type) => {
+    const labels = {
+      learning: '学习研究',
+      coding: '编程开发', 
+      writing: '写作文档',
+      meeting: '会议沟通',
+      analysis: '分析调研',
+      design: '设计规划',
+      practice: '练习训练',
+      creative: '创意创作',
+      review: '检查审核',
+      planning: '计划安排',
+      general: '通用任务'
+    };
+    return labels[type] || '通用任务';
+  };
 
-/* 高对比度模式 */
-@media (prefers-contrast: high) {
-  :root {
-    --color-border-light: #000000;
-    --color-border-medium: #000000;
-    --color-text-secondary: #000000;
-  }
-}
+  // 任务操作
+  const addTask = useCallback(() => {
+    if (newTask.trim()) {
+      const task = {
+        id: Date.now(),
+        text: newTask,
+        priority: selectedPriority,
+        time: selectedTime,
+        estimatedDuration: estimatedDuration ? parseInt(estimatedDuration) : null,
+        completed: false,
+        category: 'work',
+        aiAnalysis: null,
+        subtasks: [],
+        createdAt: new Date().toISOString()
+      };
+      setTasks(prev => [...prev, task]);
+      setNewTask('');
+      setSelectedTime('');
+      setEstimatedDuration('');
+    }
+  }, [newTask, selectedPriority, selectedTime, estimatedDuration, setTasks]);
 
-/* 暗色模式支持 */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-bg-primary: #1F2937;
-    --color-bg-secondary: #374151;
-    --color-bg-tertiary: #4B5563;
-    --color-text-primary: #F9FAFB;
-    --color-text-secondary: #D1D5DB;
-    --color-text-muted: #9CA3AF;
-    --color-border-light: #4B5563;
-    --color-border-medium: #6B7280;
-    --gradient-bg: linear-gradient(135deg, #1F2937 0%, #374151 100%);
-  }
-  
-  .card {
-    border: 1px solid var(--color-border-light);
-  }
-  
-  .task-item {
-    border-color: var(--color-border-light);
-  }
-  
-  .task-item:hover {
-    border-color: var(--color-primary);
-  }
-}
+  const toggleTask = useCallback((id) => {
+    setTasks(prev => prev.map(task => 
+      task.id === id ? { ...task, completed: !task.completed } : task
+    ));
+  }, [setTasks]);
 
-/* ===== 打印样式 ===== */
-@media print {
-  .header-actions,
-  .add-task-section,
-  .filter-section,
-  .task-actions,
-  .sidebar,
-  .modal-overlay {
-    display: none !important;
+  const deleteTask = useCallback((id) => {
+    setTasks(prev => prev.filter(task => task.id !== id));
+  }, [setTasks]);
+
+  const startEdit = useCallback((id, text) => {
+    setEditingId(id);
+    setEditingText(text);
+  }, []);
+
+  const saveEdit = useCallback(() => {
+    setTasks(prev => prev.map(task => 
+      task.id === editingId ? { ...task, text: editingText } : task
+    ));
+    setEditingId(null);
+    setEditingText('');
+  }, [editingId, editingText, setTasks]);
+
+  // 子任务操作
+  const convertStepsToSubtasks = useCallback((taskId) => {
+    const task = tasks.find(t => t.id === taskId);
+    if (!task?.aiAnalysis?.steps) return;
+
+    const subtasks = task.aiAnalysis.steps.map((step, index) => ({
+      id: `${taskId}-sub-${index}`,
+      text: step.text,
+      duration: step.duration,
+      order: step.order,
+      completed: false,
+      startTime: null,
+      endTime: null
+    }));
+
+    setTasks(prevTasks => 
+      prevTasks.map(t => 
+        t.id === taskId 
+          ? { ...t, subtasks }
+          : t
+      )
+    );
+  }, [tasks, setTasks]);
+
+  const toggleSubtask = useCallback((taskId, subtaskId) => {
+    setTasks(prevTasks => 
+      prevTasks.map(task => 
+        task.id === taskId 
+          ? {
+              ...task,
+              subtasks: task.subtasks.map(sub =>
+                sub.id === subtaskId 
+                  ? { 
+                      ...sub, 
+                      completed: !sub.completed,
+                      endTime: !sub.completed ? new Date().toLocaleTimeString() : null
+                    }
+                  : sub
+              )
+            }
+          : task
+      )
+    );
+  }, [setTasks]);
+
+  const toggleAnalysisExpanded = useCallback((taskId) => {
+    setExpandedAnalysis(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(taskId)) {
+        newSet.delete(taskId);
+      } else {
+        newSet.add(taskId);
+      }
+      return newSet;
+    });
+  }, []);
+
+  // 完成番茄钟会话的处理
+  const handlePomodoroComplete = useCallback((activeTask, activeSubtask, duration) => {
+    const taskName = activeTask.text;
+    const subtaskName = activeSubtask ? activeSubtask.text : taskName;
+
+    const pomodoroRecord = {
+      id: Date.now(),
+      taskName,
+      subtaskName,
+      duration,
+      completedAt: new Date().toISOString(),
+      date: new Date().toDateString(),
+      efficiency: 'high'
+    };
+
+    setPomodoroHistory(prev => [pomodoroRecord, ...prev]);
+
+    if (activeSubtask) {
+      toggleSubtask(activeTask.id, pomodoroHook.activePomodoroId);
+    }
+
+    // 通知处理
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification('🎉 番茄钟完成！', {
+        body: `恭喜完成「${subtaskName}」，休息一下吧！`,
+        icon: '/favicon.ico'
+      });
+    }
+  }, [setPomodoroHistory, toggleSubtask, pomodoroHook.activePomodoroId]);
+
+  // 修改完成番茄钟的逻辑
+  useEffect(() => {
+    if (pomodoroHook.pomodoroStatus === 'completed') {
+      const activeTask = tasks.find(t => 
+        t.id === pomodoroHook.activePomodoroId || 
+        t.subtasks.some(s => s.id === pomodoroHook.activePomodoroId)
+      );
+      
+      if (activeTask) {
+        const activeSubtask = activeTask.subtasks.find(s => s.id === pomodoroHook.activePomodoroId);
+        const duration = activeSubtask ? activeSubtask.duration : activeTask.estimatedDuration;
+        handlePomodoroComplete(activeTask, activeSubtask, duration);
+      }
+    }
+  }, [pomodoroHook.pomodoroStatus, pomodoroHook.activePomodoroId, tasks, handlePomodoroComplete]);
+
+  // 工具函数
+  const formatTime = useCallback((seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  }, []);
+
+  const formatDuration = useCallback((minutes) => {
+    if (!minutes) return '';
+    if (minutes < 60) return `${minutes}分钟`;
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return mins > 0 ? `${hours}小时${mins}分钟` : `${hours}小时`;
+  }, []);
+
+  const getPriorityColor = useCallback((priority) => {
+    switch (priority) {
+      case 'high': return 'high-priority';
+      case 'medium': return 'medium-priority';
+      case 'low': return 'low-priority';
+      default: return 'default-priority';
+    }
+  }, []);
+
+  // 计算统计数据
+  const stats = useMemo(() => {
+    const total = tasks.length;
+    const completed = tasks.filter(t => t.completed).length;
+    const high = tasks.filter(t => t.priority === 'high' && !t.completed).length;
+    const aiAnalyzed = tasks.filter(t => t.aiAnalysis).length;
+    return { total, completed, high, pending: total - completed, aiAnalyzed };
+  }, [tasks]);
+
+  const pomodoroStats = useMemo(() => {
+    const today = new Date().toDateString();
+    const todayPomodoros = pomodoroHistory.filter(p => p.date === today);
+    const totalTime = todayPomodoros.reduce((sum, p) => sum + p.duration, 0);
+    const totalSessions = todayPomodoros.length;
+    return { totalTime, totalSessions };
+  }, [pomodoroHistory]);
+
+  const weeklyStats = useMemo(() => {
+    const today = new Date();
+    const weekData = [];
+    
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date(today);
+      date.setDate(date.getDate() - i);
+      const dateStr = date.toDateString();
+      
+      const dayPomodoros = pomodoroHistory.filter(p => p.date === dateStr);
+      weekData.push({
+        day: date.toLocaleDateString('zh-CN', { weekday: 'short' }),
+        date: dateStr,
+        count: dayPomodoros.length,
+        time: dayPomodoros.reduce((sum, p) => sum + (p.duration || 0), 0)
+      });
+    }
+    
+    return weekData;
+  }, [pomodoroHistory]);
+
+  const achievements = useMemo(() => {
+    const newAchievements = [];
+    const totalPomodoros = pomodoroHistory.length;
+    const todayPomodoros = pomodoroStats.totalSessions;
+    
+    if (totalPomodoros >= 1) newAchievements.push({ id: 'first', name: '首次专注', icon: '🌱' });
+    if (totalPomodoros >= 10) newAchievements.push({ id: 'ten', name: '十次专注', icon: '🔥' });
+    if (totalPomodoros >= 50) newAchievements.push({ id: 'fifty', name: '专注达人', icon: '💪' });
+    if (totalPomodoros >= 100) newAchievements.push({ id: 'hundred', name: '专注大师', icon: '🏆' });
+    
+    if (todayPomodoros >= dailyGoal) newAchievements.push({ id: 'daily', name: '今日目标达成', icon: '⭐' });
+    if (todayPomodoros >= 10) newAchievements.push({ id: 'super', name: '超级专注日', icon: '💎' });
+    
+    if (focusStreak >= 3) newAchievements.push({ id: 'streak3', name: '连续专注3天', icon: '🔥' });
+    if (focusStreak >= 7) newAchievements.push({ id: 'streak7', name: '连续专注一周', icon: '👑' });
+    
+    return newAchievements;
+  }, [pomodoroHistory.length, pomodoroStats.totalSessions, dailyGoal, focusStreak]);
+
+  const filteredTasks = useMemo(() => {
+    return tasks.filter(task => {
+      if (filter === 'completed') return task.completed;
+      if (filter === 'pending') return !task.completed;
+      return true;
+    });
+  }, [tasks, filter]);
+
+  const sortedTasks = useMemo(() => {
+    return filteredTasks.sort((a, b) => {
+      const priorityOrder = { high: 3, medium: 2, low: 1 };
+      if (priorityOrder[a.priority] !== priorityOrder[b.priority]) {
+        return priorityOrder[b.priority] - priorityOrder[a.priority];
+      }
+      if (a.time && b.time) {
+        return a.time.localeCompare(b.time);
+      }
+      return 0;
+    });
+  }, [filteredTasks]);
+
+  const getEfficiencyScore = useCallback(() => {
+    const completionRate = Math.min((pomodoroStats.totalSessions / dailyGoal) * 100, 100);
+    return Math.round(completionRate);
+  }, [pomodoroStats.totalSessions, dailyGoal]);
+
+  function getPomodoroOriginalTime() {
+    if (!pomodoroHook.activePomodoroId) return 25;
+    
+    const activeTask = tasks.find(t => 
+      t.id === pomodoroHook.activePomodoroId || 
+      t.subtasks.some(s => s.id === pomodoroHook.activePomodoroId)
+    );
+    
+    if (activeTask) {
+      const activeSubtask = activeTask.subtasks.find(s => s.id === pomodoroHook.activePomodoroId);
+      return activeSubtask ? activeSubtask.duration : activeTask.estimatedDuration || 25;
+    }
+    
+    return 25;
   }
-  
-  .app-container {
-    max-width: none;
-    padding: 0;
-  }
-  
-  .layout-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .card {
-    box-shadow: none;
-    border: 1px solid #000;
-  }
-  
-  .task-item {
-    break-inside: avoid;
-    margin-bottom: var(--spacing-lg);
-  }
-}
+
+  // 初始化和备份提醒
+  useEffect(() => {
+    if (tasks.length === 0) {
+      const sampleTasks = [
+        {
+          id: 1,
+          text: '体验AI智能分析功能',
+          priority: 'high',
+          time: '',
+          estimatedDuration: 30,
+          completed: false,
+          category: 'demo',
+          aiAnalysis: null,
+          subtasks: [],
+          createdAt: new Date().toISOString()
+        }
+      ];
+      setTasks(sampleTasks);
+    }
+
+    // 检查备份提醒
+    const shouldShowReminder = 
+      appStats.daysUsed >= 3 || 
+      stats.total >= 5 || 
+      pomodoroHistory.length >= 10;
+
+    if (shouldShowReminder && !isLoggedIn) {
+      const timer = setTimeout(() => setShowBackupReminder(true), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, []);
+
+  // 请求通知权限
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, []);
+
+  return (
+    <div className="app-container">
+      {/* 备份提醒弹窗 */}
+      {showBackupReminder && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <div className="modal-text-center">
+              <div className="modal-icon">☁️</div>
+              <h3>保护你的数据？</h3>
+              <p>
+                你已经使用 {appStats.daysUsed} 天，创建了 {stats.total} 个任务！
+                <br />一键备份，多设备同步，永不丢失。
+              </p>
+              <div className="modal-buttons">
+                <button
+                  onClick={() => alert('登录功能开发中...')}
+                  className="btn btn-green"
+                >
+                  🟢 微信一键登录
+                </button>
+                <button
+                  onClick={() => alert('登录功能开发中...')}
+                  className="btn btn-blue"
+                >
+                  🔵 Google一键登录
+                </button>
+                <button
+                  onClick={() => setShowBackupReminder(false)}
+                  className="btn btn-gray"
+                >
+                  稍后再说
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="layout-grid">
+        {/* 主要任务区域 */}
+        <div className="main-content">
+          <div className="card">
+            {/* 头部统计 */}
+            <div className="header-stats">
+              <div className="header-actions">
+                <button
+                  onClick={() => alert('数据管理功能开发中...')}
+                  className="header-btn"
+                  title="数据管理"
+                >
+                  <Icons.CloudOff />
+                </button>
+              </div>
+
+              <h1 className="main-title">
+                <Icons.Timer />
+                AI智能番茄钟
+                <span className="subtitle">极简版</span>
+              </h1>
+              
+              <div className="stats-grid">
+                <div className="stat-card">
+                  <div className="stat-number">{stats.total}</div>
+                  <div className="stat-label">总任务</div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-number stat-green">{stats.completed}</div>
+                  <div className="stat-label">已完成</div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-number stat-yellow">{stats.pending}</div>
+                  <div className="stat-label">待处理</div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-number stat-red">{stats.high}</div>
+                  <div className="stat-label">高优先级</div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-number stat-purple">{stats.aiAnalyzed}</div>
+                  <div className="stat-label">AI分析</div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-number stat-cyan">{pomodoroStats.totalSessions}</div>
+                  <div className="stat-label">今日🍅</div>
+                </div>
+              </div>
+            </div>
+
+            {/* 番茄钟状态栏 */}
+            {pomodoroHook.pomodoroStatus !== 'idle' && (
+              <div className="pomodoro-status">
+                <div className="pomodoro-info">
+                  <div className="pomodoro-indicator"></div>
+                  <span className="pomodoro-text">
+                    {pomodoroHook.pomodoroStatus === 'running' ? '🍅 专注中' : 
+                     pomodoroHook.pomodoroStatus === 'paused' ? '⏸️ 已暂停' : '✅ 已完成'}
+                  </span>
+                </div>
+                <div className="pomodoro-controls">
+                  <div className="pomodoro-timer">
+                    {formatTime(pomodoroHook.pomodoroTime)}
+                  </div>
+                  <div className="pomodoro-buttons">
+                    {pomodoroHook.pomodoroStatus === 'running' && (
+                      <button onClick={pomodoroHook.pausePomodoro} className="pomodoro-btn">
+                        <Icons.Pause />
+                      </button>
+                    )}
+                    {pomodoroHook.pomodoroStatus === 'paused' && (
+                      <button onClick={pomodoroHook.resumePomodoro} className="pomodoro-btn">
+                        <Icons.Play />
+                      </button>
+                    )}
+                    <button onClick={pomodoroHook.stopPomodoro} className="pomodoro-btn">
+                      <Icons.Square />
+                    </button>
+                  </div>
+                </div>
+                {pomodoroHook.pomodoroStatus === 'running' && (
+                  <div className="pomodoro-progress">
+                    <div 
+                      className="pomodoro-progress-bar"
+                      style={{
+                        width: `${100 - (pomodoroHook.pomodoroTime / (getPomodoroOriginalTime() * 60)) * 100}%`
+                      }}
+                    ></div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 任务添加 */}
+            <div className="add-task-section">
+              <div className="add-task-form">
+                <input
+                  type="text"
+                  value={newTask}
+                  onChange={(e) => setNewTask(e.target.value)}
+                  placeholder="添加任务，AI智能识别类型并分解步骤..."
+                  className="task-input"
+                  onKeyPress={(e) => e.key === 'Enter' && addTask()}
+                />
+                <select
+                  value={selectedPriority}
+                  onChange={(e) => setSelectedPriority(e.target.value)}
+                  className="priority-select"
+                >
+                  <option value="low">低优先级</option>
+                  <option value="medium">中优先级</option>
+                  <option value="high">高优先级</option>
+                </select>
+                <input
+                  type="time"
+                  value={selectedTime}
+                  onChange={(e) => setSelectedTime(e.target.value)}
+                  className="time-input"
+                />
+                <input
+                  type="number"
+                  value={estimatedDuration}
+                  onChange={(e) => setEstimatedDuration(e.target.value)}
+                  placeholder="预计分钟"
+                  min="1"
+                  className="duration-input"
+                />
+                <button onClick={addTask} className="add-btn">
+                  <Icons.Plus />
+                  添加
+                </button>
+              </div>
+              <div className="tip-text">
+                💡 极简体验：AI能识别10种任务类型，提供针对性的执行步骤分解
+              </div>
+            </div>
+
+            {/* 过滤器 */}
+            <div className="filter-section">
+              <div className="filter-buttons">
+                <button
+                  onClick={() => setFilter('all')}
+                  className={`filter-btn ${filter === 'all' ? 'active' : ''}`}
+                >
+                  全部任务
+                </button>
+                <button
+                  onClick={() => setFilter('pending')}
+                  className={`filter-btn ${filter === 'pending' ? 'active' : ''}`}
+                >
+                  待处理
+                </button>
+                <button
+                  onClick={() => setFilter('completed')}
+                  className={`filter-btn ${filter === 'completed' ? 'active' : ''}`}
+                >
+                  已完成
+                </button>
+              </div>
+            </div>
+
+            {/* 任务列表 */}
+            <div className="tasks-section">
+              {sortedTasks.length === 0 ? (
+                <div className="empty-state">
+                  <Icons.Timer />
+                  <p className="empty-title">开始添加你的第一个任务吧！</p>
+                  <p className="empty-subtitle">
+                    🚀 AI智能分析：学习、编程、写作、会议等10种任务类型专业分解
+                  </p>
+                </div>
+              ) : (
+                <div className="tasks-list">
+                  {sortedTasks.map((task) => (
+                    <div
+                      key={task.id}
+                      className={`task-item ${task.completed ? 'completed' : ''}`}
+                    >
+                      {/* 主任务行 */}
+                      <div className="task-header">
+                        <div className="task-main">
+                          <button
+                            onClick={() => toggleTask(task.id)}
+                            className={`task-checkbox ${task.completed ? 'checked' : ''}`}
+                          >
+                            {task.completed && <Icons.Check />}
+                          </button>
+
+                          <div className={`priority-badge ${getPriorityColor(task.priority)}`}>
+                            <Icons.Flag />
+                            {task.priority === 'high' ? '高' : task.priority === 'medium' ? '中' : '低'}
+                          </div>
+
+                          {task.time && (
+                            <div className="task-time">
+                              <Icons.Clock />
+                              {task.time}
+                            </div>
+                          )}
+
+                          {task.estimatedDuration && (
+                            <div className="task-duration">
+                              <Icons.Timer />
+                              {formatDuration(task.estimatedDuration)}
+                            </div>
+                          )}
+
+                          <div className="task-text-container">
+                            {editingId === task.id ? (
+                              <input
+                                type="text"
+                                value={editingText}
+                                onChange={(e) => setEditingText(e.target.value)}
+                                onKeyPress={(e) => e.key === 'Enter' && saveEdit()}
+                                onBlur={saveEdit}
+                                className="task-edit-input"
+                                autoFocus
+                              />
+                            ) : (
+                              <span
+                                className={`task-text ${task.completed ? 'completed-text' : ''}`}
+                                onClick={() => startEdit(task.id, task.text)}
+                              >
+                                {task.text}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="task-actions">
+                          {/* 直接开始番茄钟 */}
+                          {task.estimatedDuration && !task.completed && (
+                            <button
+                              onClick={() => pomodoroHook.startPomodoro(task.id, null, task.estimatedDuration, task.text, task.text)}
+                              disabled={pomodoroHook.activePomodoroId === task.id}
+                              className={`action-btn pomodoro-btn ${pomodoroHook.activePomodoroId === task.id ? 'active' : ''}`}
+                              title="开始番茄钟"
+                            >
+                              <Icons.Play />
+                            </button>
+                          )}
+
+                          {/* AI分析按钮 */}
+                          {!task.aiAnalysis ? (
+                            <button
+                              onClick={() => analyzeTask(task.id, task.text, task.estimatedDuration)}
+                              disabled={analyzingTasks.has(task.id)}
+                              className="action-btn ai-btn"
+                              title="AI智能分析"
+                            >
+                              {analyzingTasks.has(task.id) ? (
+                                <span className="spinner">🔄</span>
+                              ) : (
+                                <Icons.Brain />
+                              )}
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => toggleAnalysisExpanded(task.id)}
+                              className="action-btn ai-btn"
+                              title="查看AI分析"
+                            >
+                              {expandedAnalysis.has(task.id) ? (
+                                <Icons.ChevronDown />
+                              ) : (
+                                <Icons.ChevronRight />
+                              )}
+                            </button>
+                          )}
+
+                          <button
+                            onClick={() => startEdit(task.id, task.text)}
+                            className="action-btn edit-btn"
+                          >
+                            <Icons.Edit />
+                          </button>
+                          <button
+                            onClick={() => deleteTask(task.id)}
+                            className="action-btn delete-btn"
+                          >
+                            <Icons.Trash />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* AI优化任务分解结果 */}
+                      {task.aiAnalysis && expandedAnalysis.has(task.id) && (
+                        <div className="analysis-section">
+                          <div className="analysis-header">
+                            <h4 className="analysis-title">
+                              <Icons.Brain />
+                              AI智能分解 - {getTaskTypeLabel(task.aiAnalysis.taskType)}
+                              <span className="analysis-duration">
+                                (总计: {formatDuration(task.aiAnalysis.totalDuration)})
+                              </span>
+                            </h4>
+                            <p className="analysis-text">
+                              {task.aiAnalysis.analysis}
+                            </p>
+                          </div>
+
+                          <div className="analysis-content">
+                            {/* 优化的执行步骤 */}
+                            <div className="steps-section">
+                              <div className="steps-header">
+                                <h5 className="steps-title">
+                                  <Icons.Timer />
+                                  执行步骤
+                                </h5>
+                                {task.subtasks.length === 0 && (
+                                  <button
+                                    onClick={() => convertStepsToSubtasks(task.id)}
+                                    className="start-btn"
+                                  >
+                                    开始执行
+                                  </button>
+                                )}
+                              </div>
+                              
+                              {task.subtasks.length > 0 ? (
+                                <div className="subtasks-list">
+                                  {task.subtasks.map((subtask) => (
+                                    <div key={subtask.id} className="subtask-item">
+                                      <button
+                                        onClick={() => toggleSubtask(task.id, subtask.id)}
+                                        className={`subtask-checkbox ${subtask.completed ? 'checked' : ''}`}
+                                      >
+                                        {subtask.completed && <Icons.Check />}
+                                      </button>
+                                      <div className="subtask-content">
+                                        <div className={`subtask-text ${subtask.completed ? 'completed-text' : ''}`}>
+                                          步骤{subtask.order}: {subtask.text}
+                                        </div>
+                                        <div className="subtask-info">
+                                          <span className="subtask-duration">
+                                            🍅 {formatDuration(subtask.duration)}
+                                          </span>
+                                          {subtask.completed && subtask.endTime && (
+                                            <span className="subtask-time">
+                                              完成于 {subtask.endTime}
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                      {!subtask.completed && (
+                                        <button
+                                          onClick={() => pomodoroHook.startPomodoro(
+                                            task.id, 
+                                            subtask.id, 
+                                            subtask.duration, 
+                                            task.text, 
+                                            subtask.text
+                                          )}
+                                          disabled={pomodoroHook.activePomodoroId === subtask.id}
+                                          className={`subtask-play-btn ${pomodoroHook.activePomodoroId === subtask.id ? 'active' : ''}`}
+                                          title="开始这个步骤的番茄钟"
+                                        >
+                                          <Icons.Play />
+                                        </button>
+                                      )}
+                                    </div>
+                                  ))}
+                                  
+                                  {/* 进度条 */}
+                                  <div className="progress-section">
+                                    <div className="progress-info">
+                                      <span>总体进度</span>
+                                      <span>{Math.round((task.subtasks.filter(s => s.completed).length / task.subtasks.length) * 100)}%</span>
+                                    </div>
+                                    <div className="progress-bar">
+                                      <div 
+                                        className="progress-fill"
+                                        style={{
+                                          width: `${(task.subtasks.filter(s => s.completed).length / task.subtasks.length) * 100}%`
+                                        }}
+                                      ></div>
+                                    </div>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="steps-preview">
+                                  {task.aiAnalysis.steps.map((step, index) => (
+                                    <div key={index} className="step-preview optimized-step">
+                                      <div className="step-text">
+                                        步骤{step.order}: {step.text}
+                                      </div>
+                                      <div className="step-duration">
+                                        🍅 {formatDuration(step.duration)}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* 优化建议 */}
+                            <div className="tips-section">
+                              <h5 className="tips-title">
+                                <Icons.Lightbulb />
+                                执行建议
+                              </h5>
+                              <ul className="tips-list">
+                                {task.aiAnalysis.tips.map((tip, index) => (
+                                  <li key={index} className="tip-item">
+                                    <span className="tip-icon">💡</span>
+                                    <span>{tip}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* 增强的侧边栏 */}
+        <div className="sidebar">
+          <div className="sidebar-card">
+            {/* 今日目标 */}
+            <div className="sidebar-section">
+              <h3 className="sidebar-title">
+                <span className="sidebar-emoji">🎯</span>
+                今日目标
+              </h3>
+              
+              <div className="goal-section">
+                <div className="goal-progress">
+                  <div className="goal-numbers">
+                    <span className="goal-current">{pomodoroStats.totalSessions}</span>
+                    <span className="goal-separator">/</span>
+                    <span className="goal-target">{dailyGoal}</span>
+                  </div>
+                  <div className="goal-label">番茄钟</div>
+                </div>
+                
+                <div className="goal-progress-bar">
+                  <div 
+                    className="goal-progress-fill"
+                    style={{
+                      width: `${Math.min((pomodoroStats.totalSessions / dailyGoal) * 100, 100)}%`
+                    }}
+                  ></div>
+                </div>
+                
+                <div className="goal-controls">
+                  <button 
+                    onClick={() => setDailyGoal(Math.max(1, dailyGoal - 1))}
+                    className="goal-btn"
+                  >
+                    -
+                  </button>
+                  <span className="goal-text">调整目标</span>
+                  <button 
+                    onClick={() => setDailyGoal(dailyGoal + 1)}
+                    className="goal-btn"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* 效率分析 */}
+            <div className="sidebar-section">
+              <h3 className="sidebar-title">
+                <span className="sidebar-emoji">📊</span>
+                效率分析
+              </h3>
+              
+              <div className="efficiency-grid">
+                <div className="efficiency-item">
+                  <div className="efficiency-number">{getEfficiencyScore()}%</div>
+                  <div className="efficiency-label">完成度</div>
+                </div>
+                <div className="efficiency-item">
+                  <div className="efficiency-number">{formatDuration(pomodoroStats.totalTime)}</div>
+                  <div className="efficiency-label">专注时间</div>
+                </div>
+                <div className="efficiency-item">
+                  <div className="efficiency-number">{focusStreak}</div>
+                  <div className="efficiency-label">连续天数</div>
+                </div>
+                <div className="efficiency-item">
+                  <div className="efficiency-number">{appStats.daysUsed}</div>
+                  <div className="efficiency-label">使用天数</div>
+                </div>
+              </div>
+            </div>
+
+            {/* 周趋势 */}
+            <div className="sidebar-section">
+              <h3 className="sidebar-title">
+                <span className="sidebar-emoji">📈</span>
+                一周趋势
+              </h3>
+              
+              <div className="week-chart">
+                {weeklyStats.map((day, index) => (
+                  <div key={index} className="week-day">
+                    <div className="week-bar-container">
+                      <div 
+                        className="week-bar"
+                        style={{
+                          height: `${Math.max((day.count / Math.max(...weeklyStats.map(d => d.count), 1)) * 60, 4)}px`
+                        }}
+                      ></div>
+                    </div>
+                    <div className="week-count">{day.count}</div>
+                    <div className="week-label">{day.day}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* 成就系统 */}
+            <div className="sidebar-section">
+              <h3 className="sidebar-title">
+                <span className="sidebar-emoji">🏆</span>
+                成就徽章
+              </h3>
+              
+              <div className="achievements-grid">
+                {achievements.length > 0 ? (
+                  achievements.slice(0, 6).map((achievement) => (
+                    <div key={achievement.id} className="achievement-item">
+                      <span className="achievement-icon">{achievement.icon}</span>
+                      <span className="achievement-name">{achievement.name}</span>
+                    </div>
+                  ))
+                ) : (
+                  <div className="achievement-empty">
+                    <span>🌟</span>
+                    <p>完成首个番茄钟解锁成就</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 使用提示 */}
+            <div className="sidebar-section">
+              <h4 className="sidebar-tips-title">💡 使用提示</h4>
+              <ul className="sidebar-tips-list">
+                <li>• AI能识别学习、编程、写作等10种任务类型</li>
+                <li>• 点击🧠获得针对性的步骤分解</li>
+                <li>• 每种任务类型都有专门的执行策略</li>
+                <li>• 点击▶️开始对应时长番茄钟</li>
+                <li>• 保持连续专注获得成就徽章</li>
+              </ul>
+            </div>
+
+            {/* 番茄钟历史 */}
+            <div className="sidebar-section">
+              <h4 className="sidebar-history-title">最近完成</h4>
+              <div className="sidebar-history-list">
+                {pomodoroHistory.slice(0, 5).map((record) => (
+                  <div key={record.id} className="history-item">
+                    <div className="history-task">
+                      {record.subtaskName}
+                    </div>
+                    <div className="history-info">
+                      <span className="history-duration">
+                        🍅 {formatDuration(record.duration)}
+                      </span>
+                      <span className="history-time">
+                        {new Date(record.completedAt).toLocaleTimeString().slice(0, 5)}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+                {pomodoroHistory.length === 0 && (
+                  <div className="history-empty">
+                    <Icons.Timer />
+                    <p>还没有完成的番茄钟</p>
+                    <p className="history-empty-sub">开始你的第一个专注时间吧！</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default WorkOrganizer;
