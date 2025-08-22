@@ -610,6 +610,22 @@ const WorkOrganizer = () => {
   }, [editingId, editingText, setTasks]);
 
   // 子任务操作
+  // 重新分析任务
+  const reAnalyzeTask = useCallback((taskId) => {
+    setTasks(prevTasks => 
+      prevTasks.map(task => 
+        task.id === taskId 
+          ? { ...task, aiAnalysis: null, subtasks: [] }
+          : task
+      )
+    );
+    setExpandedAnalysis(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(taskId);
+      return newSet;
+    });
+  }, []);
+
   const convertStepsToSubtasks = useCallback((taskId) => {
     const task = tasks.find(t => t.id === taskId);
     if (!task?.aiAnalysis?.steps) return;
@@ -631,7 +647,7 @@ const WorkOrganizer = () => {
           : t
       )
     );
-  }, [tasks, setTasks]);
+  }, [tasks]);
 
   const toggleSubtask = useCallback((taskId, subtaskId) => {
     setTasks(prevTasks => 
