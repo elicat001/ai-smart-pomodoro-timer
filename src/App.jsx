@@ -34,16 +34,16 @@ const Icons = {
 
 // 任务类型识别的关键词映射
 const TASK_KEYWORDS = {
-  learning: ['学习', '研究', '阅读', '掌握', '理解', '熟悉', '了解', '学会'],
-  coding: ['编程', '开发', '代码', '实现', '调试', '优化', '重构', 'bug'],
-  writing: ['写', '撰写', '编写', '起草', '文档', '报告', '文章', '方案'],
-  meeting: ['会议', '讨论', '沟通', '汇报', '演讲', '分享', '交流'],
-  analysis: ['分析', '调研', '研究', '评估', '整理', '总结', '梳理'],
-  design: ['设计', '规划', '策划', '构思', '原型', '界面', 'UI'],
-  practice: ['练习', '训练', '提升', '锻炼', '复习', '巩固'],
-  creative: ['创作', '创意', '构思', '头脑风暴', '想法', '创新'],
-  review: ['检查', '审核', '校对', '测试', '验证', '确认'],
-  planning: ['计划', '安排', '组织', '筹备', '准备', '安排']
+  learning: ['学习', '研究', '阅读', '掌握', '理解', '熟悉', '了解', '学会', '教程', '课程'],
+  coding: ['编程', '开发', '代码', '实现', '调试', '优化', '重构', 'bug', '系统', 'erp', '平台', 'app', '网站', '软件', '程序', '功能', '接口', 'api', '数据库', '前端', '后端'],
+  writing: ['写', '撰写', '编写', '起草', '文档', '报告', '文章', '方案', '材料', '内容', '文案', '说明'],
+  meeting: ['会议', '讨论', '沟通', '汇报', '演讲', '分享', '交流', '谈话', '商议'],
+  analysis: ['分析', '调研', '研究', '评估', '整理', '总结', '梳理', '统计', '数据'],
+  design: ['设计', '规划', '策划', '构思', '原型', '界面', 'UI', 'UX', '布局', '视觉'],
+  practice: ['练习', '训练', '提升', '锻炼', '复习', '巩固', '操练', '演示'],
+  creative: ['创作', '创意', '构思', '头脑风暴', '想法', '创新', '灵感', '点子'],
+  review: ['检查', '审核', '校对', '测试', '验证', '确认', '审查', '核实'],
+  planning: ['计划', '安排', '组织', '筹备', '准备', '规划', '安排', '排期']
 };
 
 // 具体的任务分解策略
@@ -406,10 +406,18 @@ const WorkOrganizer = () => {
 
   // 改进的AI分析功能
   const analyzeTask = useCallback(async (taskId, taskText, duration = 60) => {
+    // 参数验证
+    if (!taskId || !taskText) {
+      console.error('analyzeTask: 缺少必要参数', { taskId, taskText });
+      return;
+    }
+
     // 立即创建本地副本，避免闭包问题
     const currentTaskId = taskId;
     const currentTaskText = taskText;
-    const currentDuration = duration;
+    const currentDuration = duration || 60;
+    
+    console.log('开始分析任务:', { currentTaskId, currentTaskText, currentDuration });
     
     setAnalyzingTasks(prev => new Set([...prev, currentTaskId]));
     
@@ -470,24 +478,39 @@ const WorkOrganizer = () => {
         };
       }
       
-      // 确保状态更新的原子性
+      console.log('分析完成，更新任务状态:', { currentTaskId, analysis });
+      
+      // 确保状态更新的原子性 - 先检查任务是否存在
       setTasks(prevTasks => {
+        console.log('当前任务列表:', prevTasks.map(t => ({ id: t.id, text: t.text })));
+        
+        const taskExists = prevTasks.find(task => task.id === currentTaskId);
+        if (!taskExists) {
+          console.error('任务不存在，无法更新:', currentTaskId);
+          return prevTasks; // 返回原数组，不做任何修改
+        }
+        
         const newTasks = prevTasks.map(task => {
           if (task.id === currentTaskId) {
-            return { 
+            const updatedTask = { 
               ...task, 
-              aiAnalysis: { ...analysis } // 创建新对象避免引用共享
+              aiAnalysis: analysis // 直接赋值，不需要解构
             };
+            console.log('任务更新成功:', updatedTask);
+            return updatedTask;
           }
           return task;
         });
+        
+        console.log('新任务列表:', newTasks.map(t => ({ id: t.id, text: t.text, hasAnalysis: !!t.aiAnalysis })));
         return newTasks;
       });
       
       setExpandedAnalysis(prev => new Set([...prev, currentTaskId]));
       
     } catch (error) {
-      console.error('AI分析失败:', error);
+      console.error('AI分析过程中出错:', error);
+      // 出错时确保任务不会消失，只是移除加载状态
     } finally {
       setAnalyzingTasks(prev => {
         const newSet = new Set(prev);
