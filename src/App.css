@@ -537,7 +537,167 @@ body {
   to { transform: rotate(360deg); }
 }
 
-/* AI分析区域 */
+/* 第一性原理分析样式 */
+.first-principles-overview {
+  background: linear-gradient(135deg, #FEF7FF 0%, #F0F9FF 100%);
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+  margin: 1rem 0;
+  border: 1px solid #E0E7FF;
+}
+
+.principle-item {
+  margin-bottom: 1.5rem;
+}
+
+.principle-item:last-child {
+  margin-bottom: 0;
+}
+
+.principle-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #5B21B6;
+  margin-bottom: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.principle-content {
+  font-size: 0.875rem;
+  color: #374151;
+  line-height: 1.5;
+  background: white;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid #E5E7EB;
+}
+
+.elements-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.element-tag {
+  background: #DBEAFE;
+  color: #1E40AF;
+  padding: 0.25rem 0.75rem;
+  border-radius: 1rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border: 1px solid #BFDBFE;
+}
+
+.assumptions-list {
+  list-style: none;
+  background: white;
+  border-radius: 0.5rem;
+  border: 1px solid #E5E7EB;
+  overflow: hidden;
+}
+
+.assumption-item {
+  padding: 0.75rem;
+  border-bottom: 1px solid #F3F4F6;
+  font-size: 0.875rem;
+  color: #6B7280;
+  position: relative;
+  padding-left: 2.5rem;
+}
+
+.assumption-item:last-child {
+  border-bottom: none;
+}
+
+.assumption-item::before {
+  content: "❌";
+  position: absolute;
+  left: 0.75rem;
+  color: #EF4444;
+}
+
+.first-principles-step {
+  background: linear-gradient(135deg, #F0FDF4 0%, #ECFDF5 100%);
+  border: 1px solid #BBF7D0;
+}
+
+.first-principles-step .step-content {
+  flex: 1;
+}
+
+.step-principle {
+  font-size: 0.75rem;
+  color: #059669;
+  font-style: italic;
+  margin-top: 0.25rem;
+  padding: 0.5rem;
+  background: rgba(16, 185, 129, 0.1);
+  border-radius: 0.25rem;
+  border-left: 3px solid #10B981;
+}
+
+.insights-section {
+  background: white;
+  border-radius: 0.5rem;
+  padding: 1rem;
+}
+
+.insights-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 1rem;
+  font-size: 1rem;
+}
+
+.insights-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.insight-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 1rem;
+  background: linear-gradient(135deg, #F0F9FF 0%, #E0F2FE 100%);
+  border: 1px solid #BAE6FD;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  color: #0C4A6E;
+  line-height: 1.5;
+}
+
+.insight-icon {
+  font-size: 1.25rem;
+  flex-shrink: 0;
+}
+
+.tips-subtitle {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #E5E7EB;
+}
+
+.tips-list .tip-item {
+  background: linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%);
+  border: 1px solid #FDE68A;
+  color: #92400E;
+}
+
+.tips-list .tip-item .tip-icon {
+  color: #D97706;
+}
 .analysis-section {
   border-top: 1px solid #E5E7EB;
   background: linear-gradient(135deg, #F3E8FF 0%, #DBEAFE 100%);
