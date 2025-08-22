@@ -25,7 +25,11 @@ const Icons = {
   Download: () => <span>⬇️</span>,
   Upload: () => <span>⬆️</span>,
   Settings: () => <span>⚙️</span>,
-  X: () => <span>❌</span>
+  X: () => <span>❌</span>,
+  TrendingUp: () => <span>📈</span>,
+  Award: () => <span>🏆</span>,
+  Zap: () => <span>⚡</span>,
+  Star: () => <span>⭐</span>
 };
 
 const WorkOrganizer = () => {
@@ -59,6 +63,12 @@ const WorkOrganizer = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userInfo, setUserInfo] = useState(null);
   
+  // 新增状态
+  const [dailyGoal, setDailyGoal] = useState(6); // 每日番茄钟目标
+  const [focusStreak, setFocusStreak] = useState(0); // 连续专注天数
+  const [weeklyStats, setWeeklyStats] = useState([]);
+  const [achievements, setAchievements] = useState([]);
+  
   const intervalRef = useRef(null);
 
   // 本地存储管理
@@ -81,11 +91,58 @@ const WorkOrganizer = () => {
     }
   };
 
+  // 生成周统计数据
+  const generateWeeklyStats = () => {
+    const today = new Date();
+    const weekData = [];
+    
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date(today);
+      date.setDate(date.getDate() - i);
+      const dateStr = date.toDateString();
+      
+      const dayPomodoros = pomodoroHistory.filter(p => p.date === dateStr);
+      weekData.push({
+        day: date.toLocaleDateString('zh-CN', { weekday: 'short' }),
+        date: dateStr,
+        count: dayPomodoros.length,
+        time: dayPomodoros.reduce((sum, p) => sum + (p.duration || 0), 0)
+      });
+    }
+    
+    setWeeklyStats(weekData);
+  };
+
+  // 计算成就
+  const calculateAchievements = () => {
+    const newAchievements = [];
+    const totalPomodoros = pomodoroHistory.length;
+    const todayPomodoros = getTodayPomodoroStats().totalSessions;
+    
+    // 基础成就
+    if (totalPomodoros >= 1) newAchievements.push({ id: 'first', name: '首次专注', icon: '🌱' });
+    if (totalPomodoros >= 10) newAchievements.push({ id: 'ten', name: '十次专注', icon: '🔥' });
+    if (totalPomodoros >= 50) newAchievements.push({ id: 'fifty', name: '专注达人', icon: '💪' });
+    if (totalPomodoros >= 100) newAchievements.push({ id: 'hundred', name: '专注大师', icon: '🏆' });
+    
+    // 每日成就
+    if (todayPomodoros >= dailyGoal) newAchievements.push({ id: 'daily', name: '今日目标达成', icon: '⭐' });
+    if (todayPomodoros >= 10) newAchievements.push({ id: 'super', name: '超级专注日', icon: '💎' });
+    
+    // 连续性成就
+    if (focusStreak >= 3) newAchievements.push({ id: 'streak3', name: '连续专注3天', icon: '🔥' });
+    if (focusStreak >= 7) newAchievements.push({ id: 'streak7', name: '连续专注一周', icon: '👑' });
+    
+    setAchievements(newAchievements);
+  };
+
   // 初始化数据
   useEffect(() => {
     const savedTasks = loadFromLocal('tasks');
     const savedHistory = loadFromLocal('pomodoroHistory');
     const savedStats = loadFromLocal('appStats');
+    const savedGoal = loadFromLocal('dailyGoal');
+    const savedStreak = loadFromLocal('focusStreak');
     
     if (savedTasks) {
       setTasks(savedTasks);
@@ -112,6 +169,14 @@ const WorkOrganizer = () => {
       setPomodoroHistory(savedHistory);
     }
 
+    if (savedGoal) {
+      setDailyGoal(savedGoal);
+    }
+
+    if (savedStreak) {
+      setFocusStreak(savedStreak);
+    }
+
     let stats = savedStats || {
       daysUsed: 1,
       totalTasks: 0,
@@ -127,6 +192,12 @@ const WorkOrganizer = () => {
 
     checkBackupReminder(stats);
   }, []);
+
+  // 当番茄钟历史更新时，重新计算统计
+  useEffect(() => {
+    generateWeeklyStats();
+    calculateAchievements();
+  }, [pomodoroHistory, dailyGoal, focusStreak]);
 
   const checkBackupReminder = (stats) => {
     const shouldShowReminder = 
@@ -161,6 +232,15 @@ const WorkOrganizer = () => {
       });
     }
   }, [pomodoroHistory]);
+
+  // 保存目标和连击
+  useEffect(() => {
+    saveToLocal('dailyGoal', dailyGoal);
+  }, [dailyGoal]);
+
+  useEffect(() => {
+    saveToLocal('focusStreak', focusStreak);
+  }, [focusStreak]);
 
   // 番茄钟计时器
   useEffect(() => {
@@ -283,6 +363,17 @@ const WorkOrganizer = () => {
 
       if (activeSubtask) {
         toggleSubtask(activeTask.id, activePomodoroId);
+      }
+
+      // 检查是否达成今日目标
+      const todayCount = getTodayPomodoroStats().totalSessions + 1;
+      if (todayCount === dailyGoal) {
+        if ('Notification' in window && Notification.permission === 'granted') {
+          new Notification('🎉 今日目标达成！', {
+            body: `恭喜完成今日 ${dailyGoal} 个番茄钟目标！`,
+            icon: '/favicon.ico'
+          });
+        }
       }
 
       if ('Notification' in window && Notification.permission === 'granted') {
@@ -466,6 +557,12 @@ const WorkOrganizer = () => {
     const totalSessions = todayPomodoros.length;
     
     return { totalTime, totalSessions };
+  };
+
+  const getEfficiencyScore = () => {
+    const todayStats = getTodayPomodoroStats();
+    const completionRate = Math.min((todayStats.totalSessions / dailyGoal) * 100, 100);
+    return Math.round(completionRate);
   };
 
   const stats = getStats();
@@ -946,46 +1043,146 @@ const WorkOrganizer = () => {
           </div>
         </div>
 
-        {/* 番茄钟统计侧边栏 */}
+        {/* 增强的侧边栏 */}
         <div className="sidebar">
           <div className="sidebar-card">
-            <h3 className="sidebar-title">
-              <span className="sidebar-emoji">🍅</span>
-              今日统计
-            </h3>
-            
-            {/* 今日统计 */}
-            <div className="sidebar-stats">
-              <div className="sidebar-stat red">
-                <div className="sidebar-stat-number">{pomodoroStats.totalSessions}</div>
-                <div className="sidebar-stat-label">完成番茄钟</div>
+            {/* 今日目标 */}
+            <div className="sidebar-section">
+              <h3 className="sidebar-title">
+                <span className="sidebar-emoji">🎯</span>
+                今日目标
+              </h3>
+              
+              <div className="goal-section">
+                <div className="goal-progress">
+                  <div className="goal-numbers">
+                    <span className="goal-current">{pomodoroStats.totalSessions}</span>
+                    <span className="goal-separator">/</span>
+                    <span className="goal-target">{dailyGoal}</span>
+                  </div>
+                  <div className="goal-label">番茄钟</div>
+                </div>
+                
+                <div className="goal-progress-bar">
+                  <div 
+                    className="goal-progress-fill"
+                    style={{
+                      width: `${Math.min((pomodoroStats.totalSessions / dailyGoal) * 100, 100)}%`
+                    }}
+                  ></div>
+                </div>
+                
+                <div className="goal-controls">
+                  <button 
+                    onClick={() => setDailyGoal(Math.max(1, dailyGoal - 1))}
+                    className="goal-btn"
+                  >
+                    -
+                  </button>
+                  <span className="goal-text">调整目标</span>
+                  <button 
+                    onClick={() => setDailyGoal(dailyGoal + 1)}
+                    className="goal-btn"
+                  >
+                    +
+                  </button>
+                </div>
               </div>
-              <div className="sidebar-stat orange">
-                <div className="sidebar-stat-number">{formatDuration(pomodoroStats.totalTime)}</div>
-                <div className="sidebar-stat-label">专注时间</div>
+            </div>
+
+            {/* 效率分析 */}
+            <div className="sidebar-section">
+              <h3 className="sidebar-title">
+                <span className="sidebar-emoji">📊</span>
+                效率分析
+              </h3>
+              
+              <div className="efficiency-grid">
+                <div className="efficiency-item">
+                  <div className="efficiency-number">{getEfficiencyScore()}%</div>
+                  <div className="efficiency-label">完成度</div>
+                </div>
+                <div className="efficiency-item">
+                  <div className="efficiency-number">{formatDuration(pomodoroStats.totalTime)}</div>
+                  <div className="efficiency-label">专注时间</div>
+                </div>
+                <div className="efficiency-item">
+                  <div className="efficiency-number">{focusStreak}</div>
+                  <div className="efficiency-label">连续天数</div>
+                </div>
+                <div className="efficiency-item">
+                  <div className="efficiency-number">{appStats.daysUsed}</div>
+                  <div className="efficiency-label">使用天数</div>
+                </div>
               </div>
-              <div className="sidebar-stat blue">
-                <div className="sidebar-stat-number">{appStats.daysUsed}</div>
-                <div className="sidebar-stat-label">使用天数</div>
+            </div>
+
+            {/* 周趋势 */}
+            <div className="sidebar-section">
+              <h3 className="sidebar-title">
+                <span className="sidebar-emoji">📈</span>
+                一周趋势
+              </h3>
+              
+              <div className="week-chart">
+                {weeklyStats.map((day, index) => (
+                  <div key={index} className="week-day">
+                    <div className="week-bar-container">
+                      <div 
+                        className="week-bar"
+                        style={{
+                          height: `${Math.max((day.count / Math.max(...weeklyStats.map(d => d.count), 1)) * 60, 4)}px`
+                        }}
+                      ></div>
+                    </div>
+                    <div className="week-count">{day.count}</div>
+                    <div className="week-label">{day.day}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* 成就系统 */}
+            <div className="sidebar-section">
+              <h3 className="sidebar-title">
+                <span className="sidebar-emoji">🏆</span>
+                成就徽章
+              </h3>
+              
+              <div className="achievements-grid">
+                {achievements.length > 0 ? (
+                  achievements.slice(0, 6).map((achievement) => (
+                    <div key={achievement.id} className="achievement-item">
+                      <span className="achievement-icon">{achievement.icon}</span>
+                      <span className="achievement-name">{achievement.name}</span>
+                    </div>
+                  ))
+                ) : (
+                  <div className="achievement-empty">
+                    <span>🌟</span>
+                    <p>完成首个番茄钟解锁成就</p>
+                  </div>
+                )}
               </div>
             </div>
 
             {/* 使用提示 */}
-            <div className="sidebar-tips">
+            <div className="sidebar-section">
               <h4 className="sidebar-tips-title">💡 使用提示</h4>
               <ul className="sidebar-tips-list">
                 <li>• 设置预计时间，AI分析更准确</li>
                 <li>• 点击🧠获得智能步骤分解</li>
                 <li>• 点击▶️开始对应时长番茄钟</li>
-                <li>• 数据自动保存到本地</li>
+                <li>• 调整每日目标激励自己</li>
+                <li>• 保持连续专注获得成就</li>
               </ul>
             </div>
 
             {/* 番茄钟历史 */}
-            <div className="sidebar-history">
+            <div className="sidebar-section">
               <h4 className="sidebar-history-title">最近完成</h4>
               <div className="sidebar-history-list">
-                {pomodoroHistory.slice(0, 8).map((record) => (
+                {pomodoroHistory.slice(0, 5).map((record) => (
                   <div key={record.id} className="history-item">
                     <div className="history-task">
                       {record.subtaskName}
