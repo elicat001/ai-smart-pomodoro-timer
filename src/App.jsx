@@ -46,221 +46,6 @@ const TASK_KEYWORDS = {
   planning: ['计划', '安排', '组织', '筹备', '准备', '规划', '安排', '排期']
 };
 
-// 具体的任务分解策略
-const TASK_BREAKDOWN_STRATEGIES = {
-  learning: (taskText, duration) => {
-    const isComplexTopic = duration > 90;
-    return {
-      description: "运用费曼学习法，快速建立认知框架",
-      steps: isComplexTopic ? [
-        { text: "花5分钟浏览全局，找到核心概念清单", duration: Math.round(duration * 0.08) },
-        { text: "选择最重要的3个概念，直接查找实例", duration: Math.round(duration * 0.25) },
-        { text: "尝试用自己的话解释给假想的朋友", duration: Math.round(duration * 0.3) },
-        { text: "找到一个可以立即应用的场景", duration: Math.round(duration * 0.2) },
-        { text: "记录3个关键要点和1个疑问", duration: Math.round(duration * 0.17) }
-      ] : [
-        { text: "直接找到最关键的核心要点", duration: Math.round(duration * 0.3) },
-        { text: "找一个具体例子来理解", duration: Math.round(duration * 0.4) },
-        { text: "用自己的话复述一遍", duration: Math.round(duration * 0.3) }
-      ],
-      tips: [
-        "先看结论和总结，再看详细内容",
-        "边学边想现实应用场景",
-        "卡住时立即换个角度或资源"
-      ]
-    };
-  },
-  
-  coding: (taskText, duration) => {
-    const isBugFix = taskText.includes('bug') || taskText.includes('修复') || taskText.includes('调试');
-    const isNewFeature = taskText.includes('实现') || taskText.includes('开发') || taskText.includes('新增');
-    
-    if (isBugFix) {
-      return {
-        description: "采用系统性调试法，快速定位和解决问题",
-        steps: [
-          { text: "复现问题，记录具体现象", duration: Math.round(duration * 0.25) },
-          { text: "检查最近的代码变更", duration: Math.round(duration * 0.15) },
-          { text: "添加调试信息，定位问题代码段", duration: Math.round(duration * 0.35) },
-          { text: "修复并验证解决方案", duration: Math.round(duration * 0.25) }
-        ],
-        tips: [
-          "先找最可能的原因，不要从头调试",
-          "善用console.log和断点",
-          "修复后要测试相关功能"
-        ]
-      };
-    } else if (isNewFeature) {
-      return {
-        description: "采用最小可行产品思路，快速实现核心功能",
-        steps: [
-          { text: "明确最核心的功能需求", duration: Math.round(duration * 0.15) },
-          { text: "先写出最简单能跑的版本", duration: Math.round(duration * 0.45) },
-          { text: "测试核心流程是否正常", duration: Math.round(duration * 0.2) },
-          { text: "优化用户体验和边界情况", duration: Math.round(duration * 0.2) }
-        ],
-        tips: [
-          "先让功能跑起来，再考虑优雅",
-          "及时测试，避免积累太多问题",
-          "重要的是解决问题，不是炫技"
-        ]
-      };
-    } else {
-      return {
-        description: "采用渐进式开发，确保每一步都能验证",
-        steps: [
-          { text: "搭建基础框架，确认环境", duration: Math.round(duration * 0.2) },
-          { text: "实现核心逻辑", duration: Math.round(duration * 0.5) },
-          { text: "测试和调试", duration: Math.round(duration * 0.3) }
-        ],
-        tips: [
-          "经常保存和提交代码",
-          "一次只专注一个功能",
-          "代码要简洁易懂"
-        ]
-      };
-    }
-  },
-  
-  writing: (taskText, duration) => {
-    const isLongForm = duration > 60;
-    return {
-      description: "运用结构化写作法，确保思路清晰",
-      steps: isLongForm ? [
-        { text: "明确目标读者和核心信息", duration: Math.round(duration * 0.15) },
-        { text: "列出3-5个主要论点或章节", duration: Math.round(duration * 0.15) },
-        { text: "快速写出第一稿，不要纠结细节", duration: Math.round(duration * 0.45) },
-        { text: "检查逻辑结构和关键信息", duration: Math.round(duration * 0.15) },
-        { text: "润色语言和格式", duration: Math.round(duration * 0.1) }
-      ] : [
-        { text: "明确要表达的核心观点", duration: Math.round(duration * 0.2) },
-        { text: "快速写出完整草稿", duration: Math.round(duration * 0.6) },
-        { text: "检查和修改", duration: Math.round(duration * 0.2) }
-      ],
-      tips: [
-        "先写框架，再填内容",
-        "第一稿重在完整，不求完美",
-        "多用具体例子说明观点"
-      ]
-    };
-  },
-  
-  meeting: (taskText, duration) => {
-    const isPresentation = taskText.includes('演讲') || taskText.includes('汇报') || taskText.includes('分享');
-    
-    if (isPresentation) {
-      return {
-        description: "采用金字塔原理，确保信息传达有效",
-        steps: [
-          { text: "明确听众最关心的1个问题", duration: Math.round(duration * 0.2) },
-          { text: "准备核心观点和3个支撑论据", duration: Math.round(duration * 0.4) },
-          { text: "预演关键部分，准备互动环节", duration: Math.round(duration * 0.4) }
-        ],
-        tips: [
-          "先说结论，再说理由",
-          "准备具体的数据和例子",
-          "预想可能的问题和回答"
-        ]
-      };
-    } else {
-      return {
-        description: "采用积极倾听法，确保沟通有效",
-        steps: [
-          { text: "准备要讨论的关键问题清单", duration: Math.round(duration * 0.3) },
-          { text: "会议中记录关键信息和行动项", duration: Math.round(duration * 0.5) },
-          { text: "会后5分钟整理结论和下一步", duration: Math.round(duration * 0.2) }
-        ],
-        tips: [
-          "会前明确目标和议程",
-          "多问开放性问题",
-          "确认重要信息是否理解正确"
-        ]
-      };
-    }
-  },
-  
-  analysis: (taskText, duration) => {
-    return {
-      description: "运用5W1H分析法，系统梳理信息",
-      steps: [
-        { text: "收集所有相关信息和数据", duration: Math.round(duration * 0.3) },
-        { text: "从What/Why/How三个角度分析", duration: Math.round(duration * 0.4) },
-        { text: "总结关键发现和可行建议", duration: Math.round(duration * 0.3) }
-      ],
-      tips: [
-        "先看全局再看细节",
-        "数据要客观，结论要基于事实",
-        "重点是可执行的建议"
-      ]
-    };
-  },
-  
-  design: (taskText, duration) => {
-    return {
-      description: "采用设计思维流程，从用户需求出发",
-      steps: [
-        { text: "明确用户场景和核心需求", duration: Math.round(duration * 0.25) },
-        { text: "快速绘制3个不同方案", duration: Math.round(duration * 0.4) },
-        { text: "选择最优方案细化关键细节", duration: Math.round(duration * 0.35) }
-      ],
-      tips: [
-        "先解决核心问题，再考虑体验",
-        "多画草图，少纠结工具",
-        "经常问自己：用户会怎么使用？"
-      ]
-    };
-  },
-  
-  practice: (taskText, duration) => {
-    return {
-      description: "采用刻意练习法，专注薄弱环节",
-      steps: [
-        { text: "识别当前最需要改进的技能点", duration: Math.round(duration * 0.2) },
-        { text: "重复练习这个特定技能", duration: Math.round(duration * 0.6) },
-        { text: "记录练习结果和改进点", duration: Math.round(duration * 0.2) }
-      ],
-      tips: [
-        "质量比数量重要",
-        "离开舒适区，练习困难的部分",
-        "及时获得反馈并调整"
-      ]
-    };
-  },
-  
-  creative: (taskText, duration) => {
-    return {
-      description: "运用发散-收敛思维，激发创意灵感",
-      steps: [
-        { text: "设定明确的创作目标和约束", duration: Math.round(duration * 0.15) },
-        { text: "发散思维：产出大量想法不评判", duration: Math.round(duration * 0.45) },
-        { text: "收敛筛选：选择最有潜力的想法", duration: Math.round(duration * 0.25) },
-        { text: "快速制作原型或草稿", duration: Math.round(duration * 0.15) }
-      ],
-      tips: [
-        "先追求数量，再追求质量",
-        "借鉴不同领域的灵感",
-        "约束能激发更多创意"
-      ]
-    };
-  },
-  
-  review: (taskText, duration) => {
-    return {
-      description: "采用系统检查法，确保质量标准",
-      steps: [
-        { text: "制定检查清单和标准", duration: Math.round(duration * 0.2) },
-        { text: "逐项检查，记录发现的问题", duration: Math.round(duration * 0.6) },
-        { text: "整理问题清单并确定优先级", duration: Math.round(duration * 0.2) }
-      ],
-      tips: [
-        "检查要有明确的标准",
-        "重点关注影响最大的问题",
-        "及时反馈给相关人员"
-      ]
-    };
-  }
-};
-
 // 自定义Hooks
 const useLocalStorage = (key, initialValue) => {
   const [storedValue, setStoredValue] = useState(() => {
@@ -404,123 +189,8 @@ const WorkOrganizer = () => {
     return 'general';
   }, []);
 
-  // 改进的AI分析功能
-  const analyzeTask = useCallback(async (taskId, taskText, duration = 60) => {
-    // 参数验证
-    if (!taskId || !taskText) {
-      console.error('analyzeTask: 缺少必要参数', { taskId, taskText });
-      return;
-    }
-
-    // 立即创建本地副本，避免闭包问题
-    const currentTaskId = taskId;
-    const currentTaskText = taskText;
-    const currentDuration = duration || 60;
-    
-    console.log('开始分析任务:', { currentTaskId, currentTaskText, currentDuration });
-    
-    setAnalyzingTasks(prev => new Set([...prev, currentTaskId]));
-    
-    try {
-      // 模拟分析延迟
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      const taskType = identifyTaskType(currentTaskText);
-      const strategy = TASK_BREAKDOWN_STRATEGIES[taskType];
-      
-      let analysis;
-      if (strategy) {
-        const result = strategy(currentTaskText, currentDuration);
-        analysis = {
-          taskType,
-          analysis: `基于任务特点"${currentTaskText}"，识别为${getTaskTypeLabel(taskType)}类型。${result.description}`,
-          totalDuration: currentDuration,
-          steps: result.steps.map((step, index) => ({
-            ...step,
-            order: index + 1,
-            id: `${currentTaskId}-step-${index}` // 添加唯一ID
-          })),
-          tips: result.tips,
-          analyzedAt: Date.now() // 添加分析时间戳
-        };
-      } else {
-        // 通用分解逻辑
-        analysis = {
-          taskType: 'general',
-          analysis: `为"${currentTaskText}"制定了通用执行方案，专注核心目标的实现`,
-          totalDuration: currentDuration,
-          steps: [
-            { 
-              text: "明确具体的成功标准", 
-              duration: Math.round(currentDuration * 0.2), 
-              order: 1,
-              id: `${currentTaskId}-step-0`
-            },
-            { 
-              text: "执行核心工作内容", 
-              duration: Math.round(currentDuration * 0.6), 
-              order: 2,
-              id: `${currentTaskId}-step-1`
-            },
-            { 
-              text: "检查结果并记录要点", 
-              duration: Math.round(currentDuration * 0.2), 
-              order: 3,
-              id: `${currentTaskId}-step-2`
-            }
-          ],
-          tips: [
-            "专注最重要的部分",
-            "及时调整方法",
-            "记录关键成果"
-          ],
-          analyzedAt: Date.now()
-        };
-      }
-      
-      console.log('分析完成，更新任务状态:', { currentTaskId, analysis });
-      
-      // 确保状态更新的原子性 - 先检查任务是否存在
-      setTasks(prevTasks => {
-        console.log('当前任务列表:', prevTasks.map(t => ({ id: t.id, text: t.text })));
-        
-        const taskExists = prevTasks.find(task => task.id === currentTaskId);
-        if (!taskExists) {
-          console.error('任务不存在，无法更新:', currentTaskId);
-          return prevTasks; // 返回原数组，不做任何修改
-        }
-        
-        const newTasks = prevTasks.map(task => {
-          if (task.id === currentTaskId) {
-            const updatedTask = { 
-              ...task, 
-              aiAnalysis: analysis // 直接赋值，不需要解构
-            };
-            console.log('任务更新成功:', updatedTask);
-            return updatedTask;
-          }
-          return task;
-        });
-        
-        console.log('新任务列表:', newTasks.map(t => ({ id: t.id, text: t.text, hasAnalysis: !!t.aiAnalysis })));
-        return newTasks;
-      });
-      
-      setExpandedAnalysis(prev => new Set([...prev, currentTaskId]));
-      
-    } catch (error) {
-      console.error('AI分析过程中出错:', error);
-      // 出错时确保任务不会消失，只是移除加载状态
-    } finally {
-      setAnalyzingTasks(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(currentTaskId);
-        return newSet;
-      });
-    }
-  }, [identifyTaskType]);
-
-  const getTaskTypeLabel = (type) => {
+  // 获取任务类型标签
+  const getTaskTypeLabel = useCallback((type) => {
     const labels = {
       learning: '学习研究',
       coding: '编程开发', 
@@ -535,7 +205,320 @@ const WorkOrganizer = () => {
       general: '通用任务'
     };
     return labels[type] || '通用任务';
-  };
+  }, []);
+
+  // 生成任务分解策略
+  const generateTaskStrategy = useCallback((taskType, taskText, duration) => {
+    switch (taskType) {
+      case 'learning': {
+        const isComplexTopic = duration > 90;
+        return {
+          description: "运用费曼学习法，快速建立认知框架",
+          steps: isComplexTopic ? [
+            { text: "花5分钟浏览全局，找到核心概念清单", duration: Math.round(duration * 0.08) },
+            { text: "选择最重要的3个概念，直接查找实例", duration: Math.round(duration * 0.25) },
+            { text: "尝试用自己的话解释给假想的朋友", duration: Math.round(duration * 0.3) },
+            { text: "找到一个可以立即应用的场景", duration: Math.round(duration * 0.2) },
+            { text: "记录3个关键要点和1个疑问", duration: Math.round(duration * 0.17) }
+          ] : [
+            { text: "直接找到最关键的核心要点", duration: Math.round(duration * 0.3) },
+            { text: "找一个具体例子来理解", duration: Math.round(duration * 0.4) },
+            { text: "用自己的话复述一遍", duration: Math.round(duration * 0.3) }
+          ],
+          tips: [
+            "先看结论和总结，再看详细内容",
+            "边学边想现实应用场景",
+            "卡住时立即换个角度或资源"
+          ]
+        };
+      }
+      
+      case 'coding': {
+        const isBugFix = taskText.includes('bug') || taskText.includes('修复') || taskText.includes('调试');
+        const isNewFeature = taskText.includes('实现') || taskText.includes('开发') || taskText.includes('新增');
+        
+        if (isBugFix) {
+          return {
+            description: "采用系统性调试法，快速定位和解决问题",
+            steps: [
+              { text: "复现问题，记录具体现象", duration: Math.round(duration * 0.25) },
+              { text: "检查最近的代码变更", duration: Math.round(duration * 0.15) },
+              { text: "添加调试信息，定位问题代码段", duration: Math.round(duration * 0.35) },
+              { text: "修复并验证解决方案", duration: Math.round(duration * 0.25) }
+            ],
+            tips: [
+              "先找最可能的原因，不要从头调试",
+              "善用console.log和断点",
+              "修复后要测试相关功能"
+            ]
+          };
+        } else if (isNewFeature) {
+          return {
+            description: "采用最小可行产品思路，快速实现核心功能",
+            steps: [
+              { text: "明确最核心的功能需求", duration: Math.round(duration * 0.15) },
+              { text: "先写出最简单能跑的版本", duration: Math.round(duration * 0.45) },
+              { text: "测试核心流程是否正常", duration: Math.round(duration * 0.2) },
+              { text: "优化用户体验和边界情况", duration: Math.round(duration * 0.2) }
+            ],
+            tips: [
+              "先让功能跑起来，再考虑优雅",
+              "及时测试，避免积累太多问题",
+              "重要的是解决问题，不是炫技"
+            ]
+          };
+        } else {
+          return {
+            description: "采用渐进式开发，确保每一步都能验证",
+            steps: [
+              { text: "搭建基础框架，确认环境", duration: Math.round(duration * 0.2) },
+              { text: "实现核心逻辑", duration: Math.round(duration * 0.5) },
+              { text: "测试和调试", duration: Math.round(duration * 0.3) }
+            ],
+            tips: [
+              "经常保存和提交代码",
+              "一次只专注一个功能",
+              "代码要简洁易懂"
+            ]
+          };
+        }
+      }
+      
+      case 'writing': {
+        const isLongForm = duration > 60;
+        return {
+          description: "运用结构化写作法，确保思路清晰",
+          steps: isLongForm ? [
+            { text: "明确目标读者和核心信息", duration: Math.round(duration * 0.15) },
+            { text: "列出3-5个主要论点或章节", duration: Math.round(duration * 0.15) },
+            { text: "快速写出第一稿，不要纠结细节", duration: Math.round(duration * 0.45) },
+            { text: "检查逻辑结构和关键信息", duration: Math.round(duration * 0.15) },
+            { text: "润色语言和格式", duration: Math.round(duration * 0.1) }
+          ] : [
+            { text: "明确要表达的核心观点", duration: Math.round(duration * 0.2) },
+            { text: "快速写出完整草稿", duration: Math.round(duration * 0.6) },
+            { text: "检查和修改", duration: Math.round(duration * 0.2) }
+          ],
+          tips: [
+            "先写框架，再填内容",
+            "第一稿重在完整，不求完美",
+            "多用具体例子说明观点"
+          ]
+        };
+      }
+      
+      case 'meeting': {
+        const isPresentation = taskText.includes('演讲') || taskText.includes('汇报') || taskText.includes('分享');
+        
+        if (isPresentation) {
+          return {
+            description: "采用金字塔原理，确保信息传达有效",
+            steps: [
+              { text: "明确听众最关心的1个问题", duration: Math.round(duration * 0.2) },
+              { text: "准备核心观点和3个支撑论据", duration: Math.round(duration * 0.4) },
+              { text: "预演关键部分，准备互动环节", duration: Math.round(duration * 0.4) }
+            ],
+            tips: [
+              "先说结论，再说理由",
+              "准备具体的数据和例子",
+              "预想可能的问题和回答"
+            ]
+          };
+        } else {
+          return {
+            description: "采用积极倾听法，确保沟通有效",
+            steps: [
+              { text: "准备要讨论的关键问题清单", duration: Math.round(duration * 0.3) },
+              { text: "会议中记录关键信息和行动项", duration: Math.round(duration * 0.5) },
+              { text: "会后5分钟整理结论和下一步", duration: Math.round(duration * 0.2) }
+            ],
+            tips: [
+              "会前明确目标和议程",
+              "多问开放性问题",
+              "确认重要信息是否理解正确"
+            ]
+          };
+        }
+      }
+      
+      case 'analysis': {
+        return {
+          description: "运用5W1H分析法，系统梳理信息",
+          steps: [
+            { text: "收集所有相关信息和数据", duration: Math.round(duration * 0.3) },
+            { text: "从What/Why/How三个角度分析", duration: Math.round(duration * 0.4) },
+            { text: "总结关键发现和可行建议", duration: Math.round(duration * 0.3) }
+          ],
+          tips: [
+            "先看全局再看细节",
+            "数据要客观，结论要基于事实",
+            "重点是可执行的建议"
+          ]
+        };
+      }
+      
+      case 'design': {
+        return {
+          description: "采用设计思维流程，从用户需求出发",
+          steps: [
+            { text: "明确用户场景和核心需求", duration: Math.round(duration * 0.25) },
+            { text: "快速绘制3个不同方案", duration: Math.round(duration * 0.4) },
+            { text: "选择最优方案细化关键细节", duration: Math.round(duration * 0.35) }
+          ],
+          tips: [
+            "先解决核心问题，再考虑体验",
+            "多画草图，少纠结工具",
+            "经常问自己：用户会怎么使用？"
+          ]
+        };
+      }
+      
+      case 'practice': {
+        return {
+          description: "采用刻意练习法，专注薄弱环节",
+          steps: [
+            { text: "识别当前最需要改进的技能点", duration: Math.round(duration * 0.2) },
+            { text: "重复练习这个特定技能", duration: Math.round(duration * 0.6) },
+            { text: "记录练习结果和改进点", duration: Math.round(duration * 0.2) }
+          ],
+          tips: [
+            "质量比数量重要",
+            "离开舒适区，练习困难的部分",
+            "及时获得反馈并调整"
+          ]
+        };
+      }
+      
+      case 'creative': {
+        return {
+          description: "运用发散-收敛思维，激发创意灵感",
+          steps: [
+            { text: "设定明确的创作目标和约束", duration: Math.round(duration * 0.15) },
+            { text: "发散思维：产出大量想法不评判", duration: Math.round(duration * 0.45) },
+            { text: "收敛筛选：选择最有潜力的想法", duration: Math.round(duration * 0.25) },
+            { text: "快速制作原型或草稿", duration: Math.round(duration * 0.15) }
+          ],
+          tips: [
+            "先追求数量，再追求质量",
+            "借鉴不同领域的灵感",
+            "约束能激发更多创意"
+          ]
+        };
+      }
+      
+      case 'review': {
+        return {
+          description: "采用系统检查法，确保质量标准",
+          steps: [
+            { text: "制定检查清单和标准", duration: Math.round(duration * 0.2) },
+            { text: "逐项检查，记录发现的问题", duration: Math.round(duration * 0.6) },
+            { text: "整理问题清单并确定优先级", duration: Math.round(duration * 0.2) }
+          ],
+          tips: [
+            "检查要有明确的标准",
+            "重点关注影响最大的问题",
+            "及时反馈给相关人员"
+          ]
+        };
+      }
+      
+      case 'planning': {
+        return {
+          description: "采用时间管理法，合理规划安排",
+          steps: [
+            { text: "明确计划的目标和范围", duration: Math.round(duration * 0.25) },
+            { text: "分解任务并估算时间", duration: Math.round(duration * 0.4) },
+            { text: "制定时间表和检查点", duration: Math.round(duration * 0.35) }
+          ],
+          tips: [
+            "重要的事情先做",
+            "预留缓冲时间",
+            "定期检查进度"
+          ]
+        };
+      }
+      
+      default: {
+        return {
+          description: "制定通用执行方案，专注核心目标的实现",
+          steps: [
+            { text: "明确具体的成功标准", duration: Math.round(duration * 0.2) },
+            { text: "执行核心工作内容", duration: Math.round(duration * 0.6) },
+            { text: "检查结果并记录要点", duration: Math.round(duration * 0.2) }
+          ],
+          tips: [
+            "专注最重要的部分",
+            "及时调整方法",
+            "记录关键成果"
+          ]
+        };
+      }
+    }
+  }, []);
+
+  // 改进的AI分析功能
+  const analyzeTask = useCallback(async (taskId, taskText, duration = 60) => {
+    // 参数验证和类型转换
+    if (!taskId || !taskText || typeof taskText !== 'string') {
+      console.error('analyzeTask: 参数无效', { taskId, taskText, duration });
+      return;
+    }
+
+    const finalDuration = Math.max(5, Math.min(300, Number(duration) || 60)); // 限制在5-300分钟之间
+    
+    setAnalyzingTasks(prev => new Set([...prev, taskId]));
+    
+    try {
+      // 模拟分析延迟
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      const taskType = identifyTaskType(taskText);
+      const strategy = generateTaskStrategy(taskType, taskText, finalDuration);
+      
+      const analysis = {
+        taskType,
+        taskTypeLabel: getTaskTypeLabel(taskType),
+        analysis: `基于任务特点"${taskText}"，识别为${getTaskTypeLabel(taskType)}类型。${strategy.description}`,
+        totalDuration: finalDuration,
+        steps: strategy.steps.map((step, index) => ({
+          ...step,
+          order: index + 1,
+          id: `${taskId}-step-${index}`,
+          completed: false
+        })),
+        tips: strategy.tips,
+        analyzedAt: Date.now()
+      };
+      
+      // 原子性状态更新
+      setTasks(prevTasks => {
+        const taskIndex = prevTasks.findIndex(task => task.id === taskId);
+        if (taskIndex === -1) {
+          console.warn('任务不存在，无法添加AI分析:', taskId);
+          return prevTasks;
+        }
+        
+        const newTasks = [...prevTasks];
+        newTasks[taskIndex] = {
+          ...newTasks[taskIndex],
+          aiAnalysis: analysis
+        };
+        
+        return newTasks;
+      });
+      
+      setExpandedAnalysis(prev => new Set([...prev, taskId]));
+      
+    } catch (error) {
+      console.error('AI分析失败:', error);
+    } finally {
+      setAnalyzingTasks(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(taskId);
+        return newSet;
+      });
+    }
+  }, [identifyTaskType, getTaskTypeLabel, generateTaskStrategy]);
 
   // 任务操作
   const addTask = useCallback(() => {
