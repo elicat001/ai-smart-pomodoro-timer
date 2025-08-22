@@ -1185,17 +1185,27 @@ const WorkOrganizer = () => {
                               )}
                             </button>
                           ) : (
-                            <button
-                              onClick={() => toggleAnalysisExpanded(task.id)}
-                              className="action-btn ai-btn"
-                              title="查看AI分析"
-                            >
-                              {expandedAnalysis.has(task.id) ? (
-                                <Icons.ChevronDown />
-                              ) : (
-                                <Icons.ChevronRight />
-                              )}
-                            </button>
+                            <>
+                              <button
+                                onClick={() => toggleAnalysisExpanded(task.id)}
+                                className="action-btn ai-btn"
+                                title="查看AI分析"
+                              >
+                                {expandedAnalysis.has(task.id) ? (
+                                  <Icons.ChevronDown />
+                                ) : (
+                                  <Icons.ChevronRight />
+                                )}
+                              </button>
+                              <button
+                                onClick={() => reAnalyzeTask(task.id)}
+                                className="action-btn ai-btn"
+                                title="重新分析"
+                                style={{ fontSize: '0.75rem' }}
+                              >
+                                🔄
+                              </button>
+                            </>
                           )}
 
                           <button
