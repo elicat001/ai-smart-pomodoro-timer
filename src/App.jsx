@@ -46,7 +46,7 @@ const TASK_KEYWORDS = {
   planning: ['计划', '安排', '组织', '筹备', '准备', '规划', '安排', '排期']
 };
 
-// 自定义Hooks
+// 修复的useLocalStorage Hook
 const useLocalStorage = (key, initialValue) => {
   const [storedValue, setStoredValue] = useState(() => {
     try {
@@ -60,13 +60,15 @@ const useLocalStorage = (key, initialValue) => {
 
   const setValue = useCallback((value) => {
     try {
-      const valueToStore = value instanceof Function ? value(storedValue) : value;
-      setStoredValue(valueToStore);
-      window.localStorage.setItem(`aipomodoro_${key}`, JSON.stringify(valueToStore));
+      setStoredValue((currentValue) => {
+        const valueToStore = typeof value === 'function' ? value(currentValue) : value;
+        window.localStorage.setItem(`aipomodoro_${key}`, JSON.stringify(valueToStore));
+        return valueToStore;
+      });
     } catch (error) {
       console.error('保存localStorage失败:', error);
     }
-  }, [key, storedValue]);
+  }, [key]); // 移除 storedValue 依赖
 
   return [storedValue, setValue];
 };
@@ -456,7 +458,7 @@ const WorkOrganizer = () => {
     }
   }, []);
 
-  // 改进的AI分析功能
+  // 改进的AI分析功能 - 修复状态更新bug
   const analyzeTask = useCallback(async (taskId, taskText, duration = 60) => {
     // 参数验证和类型转换
     if (!taskId || !taskText || typeof taskText !== 'string') {
@@ -464,7 +466,17 @@ const WorkOrganizer = () => {
       return;
     }
 
-    const finalDuration = Math.max(5, Math.min(300, Number(duration) || 60)); // 限制在5-300分钟之间
+    const finalDuration = Math.max(5, Math.min(300, Number(duration) || 60));
+    
+    // 先检查任务是否存在
+    setTasks(currentTasks => {
+      const taskExists = currentTasks.some(task => task.id === taskId);
+      if (!taskExists) {
+        console.error('任务不存在，无法分析:', taskId);
+        return currentTasks;
+      }
+      return currentTasks;
+    });
     
     setAnalyzingTasks(prev => new Set([...prev, taskId]));
     
@@ -490,21 +502,31 @@ const WorkOrganizer = () => {
         analyzedAt: Date.now()
       };
       
-      // 原子性状态更新
+      // 使用更安全的map操作更新任务
       setTasks(prevTasks => {
-        const taskIndex = prevTasks.findIndex(task => task.id === taskId);
-        if (taskIndex === -1) {
-          console.warn('任务不存在，无法添加AI分析:', taskId);
-          return prevTasks;
+        const updatedTasks = prevTasks.map(task => {
+          if (task.id === taskId) {
+            return {
+              ...task,
+              aiAnalysis: analysis
+            };
+          }
+          return task;
+        });
+        
+        // 验证更新是否成功
+        const updatedTask = updatedTasks.find(t => t.id === taskId);
+        if (!updatedTask) {
+          console.error('任务更新失败，任务不存在:', taskId);
+          return prevTasks; // 返回原状态
         }
         
-        const newTasks = [...prevTasks];
-        newTasks[taskIndex] = {
-          ...newTasks[taskIndex],
-          aiAnalysis: analysis
-        };
+        if (!updatedTask.aiAnalysis) {
+          console.error('AI分析添加失败:', taskId);
+          return prevTasks; // 返回原状态
+        }
         
-        return newTasks;
+        return updatedTasks;
       });
       
       setExpandedAnalysis(prev => new Set([...prev, taskId]));
@@ -520,11 +542,16 @@ const WorkOrganizer = () => {
     }
   }, [identifyTaskType, getTaskTypeLabel, generateTaskStrategy]);
 
+  // 生成唯一任务ID
+  const generateTaskId = useCallback(() => {
+    return `task_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }, []);
+
   // 任务操作
   const addTask = useCallback(() => {
     if (newTask.trim()) {
       const task = {
-        id: Date.now(),
+        id: generateTaskId(),
         text: newTask,
         priority: selectedPriority,
         time: selectedTime,
@@ -540,7 +567,7 @@ const WorkOrganizer = () => {
       setSelectedTime('');
       setEstimatedDuration('');
     }
-  }, [newTask, selectedPriority, selectedTime, estimatedDuration, setTasks]);
+  }, [newTask, selectedPriority, selectedTime, estimatedDuration, generateTaskId, setTasks]);
 
   const toggleTask = useCallback((id) => {
     setTasks(prev => prev.map(task => 
