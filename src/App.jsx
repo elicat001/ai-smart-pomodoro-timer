@@ -34,16 +34,17 @@ const Icons = {
 
 // 任务类型识别的关键词映射
 const TASK_KEYWORDS = {
-  learning: ['学习', '研究', '阅读', '掌握', '理解', '熟悉', '了解', '学会', '教程', '课程'],
-  coding: ['编程', '开发', '代码', '实现', '调试', '优化', '重构', 'bug', '系统', 'erp', '平台', 'app', '网站', '软件', '程序', '功能', '接口', 'api', '数据库', '前端', '后端'],
-  writing: ['写', '撰写', '编写', '起草', '文档', '报告', '文章', '方案', '材料', '内容', '文案', '说明'],
+  learning: ['学习', '研究', '阅读', '掌握', '理解', '熟悉', '了解', '学会', '教程', '课程', '基础', '入门', '进阶'],
+  coding: ['编程', '开发', '代码', '实现', '调试', '优化', '重构', 'bug', '系统', 'erp', '平台', 'app', '网站', '软件', '程序', '接口', 'api', '数据库', '前端', '后端', '框架', '搭建', '构建'],
+  writing: ['写', '撰写', '编写', '起草', '文档', '报告', '文章', '方案', '材料', '内容', '文案', '说明', '总结'],
   meeting: ['会议', '讨论', '沟通', '汇报', '演讲', '分享', '交流', '谈话', '商议'],
   analysis: ['分析', '调研', '研究', '评估', '整理', '总结', '梳理', '统计', '数据'],
   design: ['设计', '规划', '策划', '构思', '原型', '界面', 'UI', 'UX', '布局', '视觉'],
   practice: ['练习', '训练', '提升', '锻炼', '复习', '巩固', '操练', '演示'],
   creative: ['创作', '创意', '构思', '头脑风暴', '想法', '创新', '灵感', '点子'],
   review: ['检查', '审核', '校对', '测试', '验证', '确认', '审查', '核实'],
-  planning: ['计划', '安排', '组织', '筹备', '准备', '规划', '安排', '排期']
+  planning: ['计划', '安排', '组织', '筹备', '准备', '规划', '安排', '排期'],
+  testing: ['体验', '测试', '试用', '尝试', '验证', '检验']
 };
 
 // 修复的useLocalStorage Hook
@@ -178,19 +179,6 @@ const WorkOrganizer = () => {
   const [showBackupReminder, setShowBackupReminder] = useState(false);
   const [isLoggedIn] = useState(false);
 
-  // 智能识别任务类型
-  const identifyTaskType = useCallback((taskText) => {
-    const text = taskText.toLowerCase();
-    
-    for (const [type, keywords] of Object.entries(TASK_KEYWORDS)) {
-      if (keywords.some(keyword => text.includes(keyword))) {
-        return type;
-      }
-    }
-    
-    return 'general';
-  }, []);
-
   // 获取任务类型标签
   const getTaskTypeLabel = useCallback((type) => {
     const labels = {
@@ -204,9 +192,38 @@ const WorkOrganizer = () => {
       creative: '创意创作',
       review: '检查审核',
       planning: '计划安排',
+      testing: '体验测试',
       general: '通用任务'
     };
     return labels[type] || '通用任务';
+  }, []);
+
+  // 智能识别任务类型 - 改进优先级逻辑
+  const identifyTaskType = useCallback((taskText) => {
+    const text = taskText.toLowerCase();
+    
+    // 按优先级顺序检查，避免误判
+    const typeChecks = [
+      { type: 'testing', keywords: TASK_KEYWORDS.testing },
+      { type: 'learning', keywords: TASK_KEYWORDS.learning },
+      { type: 'writing', keywords: TASK_KEYWORDS.writing },
+      { type: 'meeting', keywords: TASK_KEYWORDS.meeting },
+      { type: 'analysis', keywords: TASK_KEYWORDS.analysis },
+      { type: 'design', keywords: TASK_KEYWORDS.design },
+      { type: 'practice', keywords: TASK_KEYWORDS.practice },
+      { type: 'creative', keywords: TASK_KEYWORDS.creative },
+      { type: 'review', keywords: TASK_KEYWORDS.review },
+      { type: 'planning', keywords: TASK_KEYWORDS.planning },
+      { type: 'coding', keywords: TASK_KEYWORDS.coding } // 编程类型放在最后，避免误判
+    ];
+    
+    for (const { type, keywords } of typeChecks) {
+      if (keywords.some(keyword => text.includes(keyword))) {
+        return type;
+      }
+    }
+    
+    return 'general';
   }, []);
 
   // 生成任务分解策略
