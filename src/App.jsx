@@ -390,43 +390,13 @@ const WorkOrganizer = () => {
     }, 3000);
   };
 
-  // AI分析功能（简化版，实际使用时需要真实API）
-  const analyzeTask = async (taskId, taskText, duration) => {
+  // 第一性原理AI分析功能
+  const analyzeTaskWithFirstPrinciples = async (taskId, taskText, duration) => {
     setAnalyzingTasks(prev => new Set([...prev, taskId]));
     
-    // 模拟AI分析结果
+    // 模拟第一性原理分析
     setTimeout(() => {
-      const analysis = {
-        analysis: `针对"${taskText}"任务，建议按以下步骤执行，确保高效完成。`,
-        totalDuration: duration || 60,
-        steps: [
-          {
-            text: "明确任务目标和要求",
-            duration: Math.round((duration || 60) * 0.2),
-            order: 1
-          },
-          {
-            text: "准备必要资源和工具",
-            duration: Math.round((duration || 60) * 0.2),
-            order: 2
-          },
-          {
-            text: "执行核心工作内容",
-            duration: Math.round((duration || 60) * 0.5),
-            order: 3
-          },
-          {
-            text: "检查和完善成果",
-            duration: Math.round((duration || 60) * 0.1),
-            order: 4
-          }
-        ],
-        tips: [
-          "保持专注，避免外界干扰",
-          "定期休息，保持高效状态",
-          "及时记录重要想法和进展"
-        ]
-      };
+      const analysis = generateFirstPrinciplesAnalysis(taskText, duration);
       
       setTasks(prevTasks => 
         prevTasks.map(task => 
@@ -444,6 +414,184 @@ const WorkOrganizer = () => {
       });
     }, 2000);
   };
+
+  // 第一性原理分析生成器
+  const generateFirstPrinciplesAnalysis = (taskText, duration) => {
+    // 基于任务类型生成第一性原理分析
+    const taskType = identifyTaskType(taskText);
+    
+    const coreObjective = extractCoreObjective(taskText);
+    const fundamentalElements = breakDownToFundamentals(taskText, taskType);
+    const minimalActions = identifyMinimalActions(fundamentalElements, duration);
+    const assumptions = identifyAssumptions(taskText);
+    
+    return {
+      analysis: `基于第一性原理分析"${taskText}"：核心目标是${coreObjective}。通过剥离传统假设，我们找到了完成这个目标的最小必要动作。`,
+      totalDuration: duration || 60,
+      coreObjective,
+      fundamentalElements,
+      assumptions,
+      steps: minimalActions,
+      firstPrinciplesInsights: generateInsights(taskText, taskType),
+      tips: generateFirstPrinciplesTips(taskType)
+    };
+  };
+
+  // 识别任务类型
+  const identifyTaskType = (taskText) => {
+    const text = taskText.toLowerCase();
+    if (text.includes('学习') || text.includes('研究') || text.includes('阅读')) return 'learning';
+    if (text.includes('写') || text.includes('报告') || text.includes('文档')) return 'creation';
+    if (text.includes('会议') || text.includes('讨论') || text.includes('沟通')) return 'communication';
+    if (text.includes('分析') || text.includes('解决') || text.includes('问题')) return 'analysis';
+    if (text.includes('设计') || text.includes('规划') || text.includes('策划')) return 'design';
+    return 'general';
+  };
+
+  // 提取核心目标
+  const extractCoreObjective = (taskText) => {
+    const objectives = {
+      learning: '获得特定知识或技能',
+      creation: '产生有价值的信息或内容',
+      communication: '传递信息并达成共识',
+      analysis: '理解问题本质并找到解决方案',
+      design: '创造满足需求的方案',
+      general: '完成特定的可衡量结果'
+    };
+    
+    const type = identifyTaskType(taskText);
+    return objectives[type];
+  };
+
+  // 分解到基本要素
+  const breakDownToFundamentals = (taskText, taskType) => {
+    const fundamentals = {
+      learning: ['信息输入', '理解加工', '记忆巩固', '应用验证'],
+      creation: ['明确需求', '收集素材', '组织结构', '表达输出'],
+      communication: ['准备信息', '选择渠道', '传递内容', '获得反馈'],
+      analysis: ['收集数据', '识别模式', '建立假设', '验证结论'],
+      design: ['理解约束', '生成选项', '评估方案', '优化细节'],
+      general: ['明确标准', '分解行动', '执行检验', '达成结果']
+    };
+    
+    return fundamentals[taskType] || fundamentals.general;
+  };
+
+  // 识别隐含假设
+  const identifyAssumptions = (taskText) => {
+    return [
+      '假设现有方法是最佳的',
+      '假设必须按传统流程执行',
+      '假设需要完美的初次尝试',
+      '假设复杂度等于质量'
+    ];
+  };
+
+  // 生成最小必要动作
+  const identifyMinimalActions = (fundamentalElements, duration) => {
+    const totalDuration = duration || 60;
+    const stepCount = fundamentalElements.length;
+    
+    return fundamentalElements.map((element, index) => {
+      let stepDuration;
+      switch (index) {
+        case 0: // 第一步通常是理解/准备
+          stepDuration = Math.round(totalDuration * 0.25);
+          break;
+        case stepCount - 1: // 最后一步通常是验证/输出
+          stepDuration = Math.round(totalDuration * 0.15);
+          break;
+        default: // 中间步骤平均分配
+          stepDuration = Math.round(totalDuration * 0.6 / (stepCount - 2));
+      }
+      
+      return {
+        text: `${element}（去除不必要的复杂性）`,
+        duration: stepDuration,
+        order: index + 1,
+        principle: getStepPrinciple(element)
+      };
+    });
+  };
+
+  // 获取步骤的第一性原理
+  const getStepPrinciple = (element) => {
+    const principles = {
+      '信息输入': '获取是理解的前提',
+      '理解加工': '理解比记忆更重要',
+      '记忆巩固': '重复是记忆的本质',
+      '应用验证': '应用是学习的目的',
+      '明确需求': '目标决定路径',
+      '收集素材': '内容是创作的基础',
+      '组织结构': '结构决定效果',
+      '表达输出': '输出验证价值',
+      '准备信息': '准备决定传递质量',
+      '选择渠道': '渠道影响接收效果',
+      '传递内容': '内容是沟通的核心',
+      '获得反馈': '反馈验证理解',
+      '收集数据': '数据是分析的原料',
+      '识别模式': '模式揭示规律',
+      '建立假设': '假设指导验证',
+      '验证结论': '验证确保正确',
+      '理解约束': '约束定义可能',
+      '生成选项': '选项提供可能',
+      '评估方案': '评估优化选择',
+      '优化细节': '细节决定成败'
+    };
+    
+    return principles[element] || '专注于本质，忽略表面';
+  };
+
+  // 生成第一性原理洞察
+  const generateInsights = (taskText, taskType) => {
+    const insights = {
+      learning: [
+        '学习的本质是神经连接的建立和强化',
+        '理解比记忆更持久，应用比理解更深刻',
+        '主动构建知识比被动接受更有效'
+      ],
+      creation: [
+        '创作的本质是重新组合已有元素',
+        '价值来自解决真实需求，而非复杂技巧',
+        '迭代改进比一次性完美更实际'
+      ],
+      communication: [
+        '沟通的本质是信息的准确传递',
+        '理解对方比表达自己更重要',
+        '简单明确比复杂修饰更有效'
+      ],
+      analysis: [
+        '分析的本质是发现因果关系',
+        '数据是现象，模式是本质',
+        '假设驱动比盲目探索更高效'
+      ],
+      design: [
+        '设计的本质是在约束下优化',
+        '功能决定形式，需求决定功能',
+        '简单有效比复杂精美更重要'
+      ],
+      general: [
+        '任何任务的本质都是输入转化为输出',
+        '效果比效率更重要，方向比速度更关键',
+        '最小可行动作比完美计划更有价值'
+      ]
+    };
+    
+    return insights[taskType] || insights.general;
+  };
+
+  // 生成第一性原理建议
+  const generateFirstPrinciplesTips = (taskType) => {
+    return [
+      '质疑每个"必须"，大多数是习惯而非必要',
+      '寻找最直接的路径，避免不必要的中间步骤',
+      '专注于结果的本质需求，而非形式要求',
+      '用最简单的方式验证假设，快速迭代'
+    ];
+  };
+
+  // 保持原有的函数名以兼容现有代码
+  const analyzeTask = analyzeTaskWithFirstPrinciples;
 
   const convertStepsToSubtasks = (taskId) => {
     const task = tasks.find(t => t.id === taskId);
