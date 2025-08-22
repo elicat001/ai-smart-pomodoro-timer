@@ -610,21 +610,56 @@ const WorkOrganizer = () => {
   }, [editingId, editingText, setTasks]);
 
   // 子任务操作
-  // 重新分析任务
+  // 重新分析任务 - 完全修复版本
   const reAnalyzeTask = useCallback((taskId) => {
-    setTasks(prevTasks => 
-      prevTasks.map(task => 
-        task.id === taskId 
-          ? { ...task, aiAnalysis: null, subtasks: [] }
-          : task
-      )
-    );
+    console.log('=== 开始重新分析任务 ===');
+    console.log('任务ID:', taskId);
+    
+    // 首先获取当前任务信息
+    setTasks(currentTasks => {
+      const targetTask = currentTasks.find(t => t.id === taskId);
+      if (!targetTask) {
+        console.error('任务不存在:', taskId);
+        return currentTasks;
+      }
+      
+      console.log('找到目标任务:', targetTask.text);
+      console.log('任务时长:', targetTask.estimatedDuration);
+      
+      // 清除旧的分析结果
+      const clearedTasks = currentTasks.map(task => {
+        if (task.id === taskId) {
+          console.log('清除旧分析结果');
+          return { 
+            ...task, 
+            aiAnalysis: null, 
+            subtasks: [] 
+          };
+        }
+        return task;
+      });
+      
+      // 立即触发新的分析
+      setTimeout(() => {
+        console.log('=== 触发新分析 ===');
+        console.log('任务文本:', targetTask.text);
+        console.log('预计时长:', targetTask.estimatedDuration);
+        
+        // 强制重新分析
+        analyzeTask(taskId, targetTask.text, targetTask.estimatedDuration || 60);
+      }, 200);
+      
+      return clearedTasks;
+    });
+    
+    // 清除展开状态
     setExpandedAnalysis(prev => {
       const newSet = new Set(prev);
       newSet.delete(taskId);
+      console.log('清除展开状态');
       return newSet;
     });
-  }, []);
+  }, [analyzeTask]);
 
   const convertStepsToSubtasks = useCallback((taskId) => {
     const task = tasks.find(t => t.id === taskId);
