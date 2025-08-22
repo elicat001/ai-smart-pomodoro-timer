@@ -24,7 +24,7 @@ body {
 /* 布局网格 */
 .layout-grid {
   display: grid;
-  grid-template-columns: 1fr 300px;
+  grid-template-columns: 1fr 350px;
   gap: 1.5rem;
 }
 
@@ -799,7 +799,7 @@ body {
   color: #F59E0B;
 }
 
-/* 侧边栏 */
+/* 增强的侧边栏 */
 .sidebar {
   grid-column: 2;
 }
@@ -819,6 +819,14 @@ body {
   top: 1.5rem;
 }
 
+.sidebar-section {
+  margin-bottom: 2rem;
+}
+
+.sidebar-section:last-child {
+  margin-bottom: 0;
+}
+
 .sidebar-title {
   font-size: 1.125rem;
   font-weight: bold;
@@ -833,79 +841,232 @@ body {
   font-size: 1.5rem;
 }
 
-.sidebar-stats {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  margin-bottom: 1.5rem;
-}
-
-.sidebar-stat {
-  padding: 1rem;
-  border-radius: 0.5rem;
+/* 今日目标 */
+.goal-section {
   text-align: center;
 }
 
-.sidebar-stat.red {
-  background: #FEF2F2;
+.goal-progress {
+  margin-bottom: 1rem;
 }
 
-.sidebar-stat.orange {
-  background: #FFF7ED;
+.goal-numbers {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.25rem;
+  margin-bottom: 0.5rem;
 }
 
-.sidebar-stat.blue {
-  background: #EBF8FF;
-}
-
-.sidebar-stat-number {
-  font-size: 1.5rem;
+.goal-current {
+  font-size: 2.5rem;
   font-weight: bold;
-  margin-bottom: 0.25rem;
+  color: #3B82F6;
 }
 
-.sidebar-stat.red .sidebar-stat-number {
-  color: #DC2626;
+.goal-separator {
+  font-size: 1.5rem;
+  color: #9CA3AF;
 }
 
-.sidebar-stat.orange .sidebar-stat-number {
-  color: #EA580C;
+.goal-target {
+  font-size: 1.5rem;
+  color: #6B7280;
 }
 
-.sidebar-stat.blue .sidebar-stat-number {
-  color: #2563EB;
+.goal-label {
+  color: #6B7280;
+  font-size: 0.875rem;
 }
 
-.sidebar-stat-label {
+.goal-progress-bar {
+  width: 100%;
+  height: 0.75rem;
+  background: #E5E7EB;
+  border-radius: 0.375rem;
+  overflow: hidden;
+  margin-bottom: 1rem;
+}
+
+.goal-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #3B82F6, #10B981);
+  border-radius: 0.375rem;
+  transition: width 0.3s ease;
+}
+
+.goal-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+}
+
+.goal-btn {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  border: 1px solid #D1D5DB;
+  background: white;
+  color: #6B7280;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  transition: all 0.2s;
+}
+
+.goal-btn:hover {
+  border-color: #3B82F6;
+  color: #3B82F6;
+}
+
+.goal-text {
   font-size: 0.875rem;
   color: #6B7280;
 }
 
-.sidebar-tips {
-  background: linear-gradient(135deg, #F3E8FF 0%, #DBEAFE 100%);
-  border-radius: 0.5rem;
-  padding: 1rem;
-  margin-bottom: 1rem;
+/* 效率分析 */
+.efficiency-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
 }
 
-.sidebar-tips-title {
-  font-weight: 500;
+.efficiency-item {
+  text-align: center;
+  padding: 1rem;
+  background: #F8FAFC;
+  border-radius: 0.5rem;
+}
+
+.efficiency-number {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: #1F2937;
+  margin-bottom: 0.25rem;
+}
+
+.efficiency-label {
+  font-size: 0.75rem;
+  color: #6B7280;
+}
+
+/* 周趋势图 */
+.week-chart {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  height: 80px;
+  padding: 0 0.5rem;
+  background: #F8FAFC;
+  border-radius: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+.week-day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+}
+
+.week-bar-container {
+  height: 60px;
+  display: flex;
+  align-items: end;
+  margin-bottom: 0.25rem;
+}
+
+.week-bar {
+  width: 1rem;
+  background: linear-gradient(180deg, #3B82F6, #10B981);
+  border-radius: 0.125rem;
+  min-height: 4px;
+  transition: height 0.3s ease;
+}
+
+.week-count {
+  font-size: 0.75rem;
+  font-weight: 600;
   color: #374151;
+  margin-bottom: 0.125rem;
+}
+
+.week-label {
+  font-size: 0.6875rem;
+  color: #6B7280;
+}
+
+/* 成就系统 */
+.achievements-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.achievement-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.75rem;
+  background: linear-gradient(135deg, #FEF3C7, #FDE68A);
+  border-radius: 0.5rem;
+  text-align: center;
+}
+
+.achievement-icon {
+  font-size: 1.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.achievement-name {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: #92400E;
+}
+
+.achievement-empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 2rem 1rem;
+  color: #9CA3AF;
+}
+
+.achievement-empty span {
+  font-size: 2rem;
+  display: block;
   margin-bottom: 0.5rem;
+}
+
+.achievement-empty p {
+  font-size: 0.875rem;
+}
+
+/* 使用提示 */
+.sidebar-tips-title {
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 0.75rem;
 }
 
 .sidebar-tips-list {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.5rem;
 }
 
 .sidebar-tips-list li {
   font-size: 0.75rem;
   color: #6B7280;
+  padding: 0.5rem;
+  background: #F8FAFC;
+  border-radius: 0.25rem;
 }
 
+/* 历史记录 */
 .sidebar-history-title {
   font-weight: 600;
   color: #374151;
@@ -913,7 +1074,7 @@ body {
 }
 
 .sidebar-history-list {
-  max-height: 16rem;
+  max-height: 12rem;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -1087,5 +1248,21 @@ body {
   
   .task-actions {
     flex-wrap: wrap;
+  }
+
+  .layout-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar-card {
+    position: static;
+  }
+
+  .efficiency-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .achievements-grid {
+    grid-template-columns: 1fr;
   }
 }
