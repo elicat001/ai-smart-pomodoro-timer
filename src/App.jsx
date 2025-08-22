@@ -390,13 +390,13 @@ const WorkOrganizer = () => {
     }, 3000);
   };
 
-  // 第一性原理AI分析功能
-  const analyzeTaskWithFirstPrinciples = async (taskId, taskText, duration) => {
+  // 第一性原理任务分解功能
+  const analyzeTask = async (taskId, taskText, duration) => {
     setAnalyzingTasks(prev => new Set([...prev, taskId]));
     
     // 模拟第一性原理分析
     setTimeout(() => {
-      const analysis = generateFirstPrinciplesAnalysis(taskText, duration);
+      const analysis = applyFirstPrinciplesThinking(taskText, duration);
       
       setTasks(prevTasks => 
         prevTasks.map(task => 
@@ -415,183 +415,131 @@ const WorkOrganizer = () => {
     }, 2000);
   };
 
-  // 第一性原理分析生成器
-  const generateFirstPrinciplesAnalysis = (taskText, duration) => {
-    // 基于任务类型生成第一性原理分析
+  // 运用第一性原理思维重新设计任务执行方案
+  const applyFirstPrinciplesThinking = (taskText, duration) => {
     const taskType = identifyTaskType(taskText);
-    
-    const coreObjective = extractCoreObjective(taskText);
-    const fundamentalElements = breakDownToFundamentals(taskText, taskType);
-    const minimalActions = identifyMinimalActions(fundamentalElements, duration);
-    const assumptions = identifyAssumptions(taskText);
+    const optimizedSteps = generateOptimizedSteps(taskText, taskType, duration);
     
     return {
-      analysis: `基于第一性原理分析"${taskText}"：核心目标是${coreObjective}。通过剥离传统假设，我们找到了完成这个目标的最小必要动作。`,
+      analysis: `已运用第一性原理重新设计"${taskText}"的执行方案，去除传统方法中的冗余步骤，专注最直接有效的路径。`,
       totalDuration: duration || 60,
-      coreObjective,
-      fundamentalElements,
-      assumptions,
-      steps: minimalActions,
-      firstPrinciplesInsights: generateInsights(taskText, taskType),
-      tips: generateFirstPrinciplesTips(taskType)
+      steps: optimizedSteps,
+      tips: getOptimizationTips(taskType)
     };
   };
 
   // 识别任务类型
   const identifyTaskType = (taskText) => {
     const text = taskText.toLowerCase();
-    if (text.includes('学习') || text.includes('研究') || text.includes('阅读')) return 'learning';
-    if (text.includes('写') || text.includes('报告') || text.includes('文档')) return 'creation';
-    if (text.includes('会议') || text.includes('讨论') || text.includes('沟通')) return 'communication';
-    if (text.includes('分析') || text.includes('解决') || text.includes('问题')) return 'analysis';
-    if (text.includes('设计') || text.includes('规划') || text.includes('策划')) return 'design';
+    if (text.includes('学习') || text.includes('研究') || text.includes('阅读') || text.includes('掌握')) return 'learning';
+    if (text.includes('写') || text.includes('报告') || text.includes('文档') || text.includes('创作')) return 'creation';
+    if (text.includes('会议') || text.includes('讨论') || text.includes('沟通') || text.includes('演讲')) return 'communication';
+    if (text.includes('分析') || text.includes('解决') || text.includes('问题') || text.includes('调研')) return 'analysis';
+    if (text.includes('设计') || text.includes('规划') || text.includes('策划') || text.includes('方案')) return 'design';
+    if (text.includes('练习') || text.includes('训练') || text.includes('提升')) return 'practice';
     return 'general';
   };
 
-  // 提取核心目标
-  const extractCoreObjective = (taskText) => {
-    const objectives = {
-      learning: '获得特定知识或技能',
-      creation: '产生有价值的信息或内容',
-      communication: '传递信息并达成共识',
-      analysis: '理解问题本质并找到解决方案',
-      design: '创造满足需求的方案',
-      general: '完成特定的可衡量结果'
-    };
-    
-    const type = identifyTaskType(taskText);
-    return objectives[type];
-  };
-
-  // 分解到基本要素
-  const breakDownToFundamentals = (taskText, taskType) => {
-    const fundamentals = {
-      learning: ['信息输入', '理解加工', '记忆巩固', '应用验证'],
-      creation: ['明确需求', '收集素材', '组织结构', '表达输出'],
-      communication: ['准备信息', '选择渠道', '传递内容', '获得反馈'],
-      analysis: ['收集数据', '识别模式', '建立假设', '验证结论'],
-      design: ['理解约束', '生成选项', '评估方案', '优化细节'],
-      general: ['明确标准', '分解行动', '执行检验', '达成结果']
-    };
-    
-    return fundamentals[taskType] || fundamentals.general;
-  };
-
-  // 识别隐含假设
-  const identifyAssumptions = (taskText) => {
-    return [
-      '假设现有方法是最佳的',
-      '假设必须按传统流程执行',
-      '假设需要完美的初次尝试',
-      '假设复杂度等于质量'
-    ];
-  };
-
-  // 生成最小必要动作
-  const identifyMinimalActions = (fundamentalElements, duration) => {
+  // 生成优化后的执行步骤
+  const generateOptimizedSteps = (taskText, taskType, duration) => {
     const totalDuration = duration || 60;
-    const stepCount = fundamentalElements.length;
     
-    return fundamentalElements.map((element, index) => {
-      let stepDuration;
-      switch (index) {
-        case 0: // 第一步通常是理解/准备
-          stepDuration = Math.round(totalDuration * 0.25);
-          break;
-        case stepCount - 1: // 最后一步通常是验证/输出
-          stepDuration = Math.round(totalDuration * 0.15);
-          break;
-        default: // 中间步骤平均分配
-          stepDuration = Math.round(totalDuration * 0.6 / (stepCount - 2));
-      }
-      
-      return {
-        text: `${element}（去除不必要的复杂性）`,
-        duration: stepDuration,
-        order: index + 1,
-        principle: getStepPrinciple(element)
-      };
-    });
-  };
-
-  // 获取步骤的第一性原理
-  const getStepPrinciple = (element) => {
-    const principles = {
-      '信息输入': '获取是理解的前提',
-      '理解加工': '理解比记忆更重要',
-      '记忆巩固': '重复是记忆的本质',
-      '应用验证': '应用是学习的目的',
-      '明确需求': '目标决定路径',
-      '收集素材': '内容是创作的基础',
-      '组织结构': '结构决定效果',
-      '表达输出': '输出验证价值',
-      '准备信息': '准备决定传递质量',
-      '选择渠道': '渠道影响接收效果',
-      '传递内容': '内容是沟通的核心',
-      '获得反馈': '反馈验证理解',
-      '收集数据': '数据是分析的原料',
-      '识别模式': '模式揭示规律',
-      '建立假设': '假设指导验证',
-      '验证结论': '验证确保正确',
-      '理解约束': '约束定义可能',
-      '生成选项': '选项提供可能',
-      '评估方案': '评估优化选择',
-      '优化细节': '细节决定成败'
-    };
-    
-    return principles[element] || '专注于本质，忽略表面';
-  };
-
-  // 生成第一性原理洞察
-  const generateInsights = (taskText, taskType) => {
-    const insights = {
+    // 基于第一性原理重新设计的执行方案
+    const optimizedPlans = {
       learning: [
-        '学习的本质是神经连接的建立和强化',
-        '理解比记忆更持久，应用比理解更深刻',
-        '主动构建知识比被动接受更有效'
+        { text: "直接找到核心概念，跳过铺垫材料", duration: Math.round(totalDuration * 0.2) },
+        { text: "立即尝试应用，在实践中理解", duration: Math.round(totalDuration * 0.5) },
+        { text: "用自己的话解释给别人听", duration: Math.round(totalDuration * 0.2) },
+        { text: "找到一个具体应用场景", duration: Math.round(totalDuration * 0.1) }
       ],
       creation: [
-        '创作的本质是重新组合已有元素',
-        '价值来自解决真实需求，而非复杂技巧',
-        '迭代改进比一次性完美更实际'
+        { text: "明确最终用户真正需要什么", duration: Math.round(totalDuration * 0.15) },
+        { text: "直接产出最简版本", duration: Math.round(totalDuration * 0.5) },
+        { text: "获得真实反馈", duration: Math.round(totalDuration * 0.2) },
+        { text: "基于反馈优化关键部分", duration: Math.round(totalDuration * 0.15) }
       ],
       communication: [
-        '沟通的本质是信息的准确传递',
-        '理解对方比表达自己更重要',
-        '简单明确比复杂修饰更有效'
+        { text: "确定对方真正关心的问题", duration: Math.round(totalDuration * 0.2) },
+        { text: "准备一个核心观点", duration: Math.round(totalDuration * 0.3) },
+        { text: "直接表达并观察反应", duration: Math.round(totalDuration * 0.3) },
+        { text: "基于反应调整下一步", duration: Math.round(totalDuration * 0.2) }
       ],
       analysis: [
-        '分析的本质是发现因果关系',
-        '数据是现象，模式是本质',
-        '假设驱动比盲目探索更高效'
+        { text: "找到最关键的数据源", duration: Math.round(totalDuration * 0.25) },
+        { text: "提出最可能的假设", duration: Math.round(totalDuration * 0.25) },
+        { text: "设计最简单的验证方法", duration: Math.round(totalDuration * 0.3) },
+        { text: "得出可执行的结论", duration: Math.round(totalDuration * 0.2) }
       ],
       design: [
-        '设计的本质是在约束下优化',
-        '功能决定形式，需求决定功能',
-        '简单有效比复杂精美更重要'
+        { text: "理解真实的约束条件", duration: Math.round(totalDuration * 0.2) },
+        { text: "直接画出最简方案", duration: Math.round(totalDuration * 0.4) },
+        { text: "测试核心功能", duration: Math.round(totalDuration * 0.25) },
+        { text: "优化最重要的部分", duration: Math.round(totalDuration * 0.15) }
+      ],
+      practice: [
+        { text: "找到最核心的技能点", duration: Math.round(totalDuration * 0.15) },
+        { text: "重复练习这个核心动作", duration: Math.round(totalDuration * 0.6) },
+        { text: "在真实场景中应用", duration: Math.round(totalDuration * 0.15) },
+        { text: "记录改进点", duration: Math.round(totalDuration * 0.1) }
       ],
       general: [
-        '任何任务的本质都是输入转化为输出',
-        '效果比效率更重要，方向比速度更关键',
-        '最小可行动作比完美计划更有价值'
+        { text: "明确成功的最低标准", duration: Math.round(totalDuration * 0.2) },
+        { text: "找到最直接的执行路径", duration: Math.round(totalDuration * 0.5) },
+        { text: "验证结果是否达标", duration: Math.round(totalDuration * 0.2) },
+        { text: "记录可复用的方法", duration: Math.round(totalDuration * 0.1) }
+      ]
+    };
+
+    const plan = optimizedPlans[taskType] || optimizedPlans.general;
+    
+    return plan.map((step, index) => ({
+      ...step,
+      order: index + 1
+    }));
+  };
+
+  // 获取优化建议
+  const getOptimizationTips = (taskType) => {
+    const tips = {
+      learning: [
+        "跳过理论，直接从实例开始",
+        "教别人是最快的学习方式",
+        "找到最小的可理解单元"
+      ],
+      creation: [
+        "先做出来，再做好",
+        "用户反馈比自我完善更重要",
+        "最简版本往往最有效"
+      ],
+      communication: [
+        "先听再说，理解比表达重要",
+        "一次只传达一个核心信息",
+        "观察反应比完美表达重要"
+      ],
+      analysis: [
+        "假设驱动，而非数据驱动",
+        "寻找最简单的解释",
+        "验证比分析更重要"
+      ],
+      design: [
+        "约束是创造力的来源",
+        "功能决定一切",
+        "简单方案往往更可靠"
+      ],
+      practice: [
+        "质量比数量重要",
+        "在真实环境中练习",
+        "专注一个技能直到熟练"
+      ],
+      general: [
+        "结果导向，而非过程导向",
+        "快速试错比完美计划有效",
+        "简单直接胜过复杂精巧"
       ]
     };
     
-    return insights[taskType] || insights.general;
+    return tips[taskType] || tips.general;
   };
-
-  // 生成第一性原理建议
-  const generateFirstPrinciplesTips = (taskType) => {
-    return [
-      '质疑每个"必须"，大多数是习惯而非必要',
-      '寻找最直接的路径，避免不必要的中间步骤',
-      '专注于结果的本质需求，而非形式要求',
-      '用最简单的方式验证假设，快速迭代'
-    ];
-  };
-
-  // 保持原有的函数名以兼容现有代码
-  const analyzeTask = analyzeTaskWithFirstPrinciples;
 
   const convertStepsToSubtasks = (taskId) => {
     const task = tasks.find(t => t.id === taskId);
@@ -1055,13 +1003,13 @@ const WorkOrganizer = () => {
                         </div>
                       </div>
 
-                      {/* 第一性原理AI分析结果 */}
+                      {/* AI优化任务分解结果 */}
                       {task.aiAnalysis && expandedAnalysis.has(task.id) && (
                         <div className="analysis-section">
                           <div className="analysis-header">
                             <h4 className="analysis-title">
                               <Icons.Brain />
-                              第一性原理分析
+                              AI优化执行方案
                               <span className="analysis-duration">
                                 (总计: {formatDuration(task.aiAnalysis.totalDuration)})
                               </span>
@@ -1071,39 +1019,13 @@ const WorkOrganizer = () => {
                             </p>
                           </div>
 
-                          {/* 第一性原理核心信息 */}
-                          <div className="first-principles-overview">
-                            <div className="principle-item">
-                              <h6 className="principle-title">🎯 核心目标</h6>
-                              <p className="principle-content">{task.aiAnalysis.coreObjective}</p>
-                            </div>
-                            
-                            <div className="principle-item">
-                              <h6 className="principle-title">🔍 基本要素</h6>
-                              <div className="elements-list">
-                                {task.aiAnalysis.fundamentalElements?.map((element, index) => (
-                                  <span key={index} className="element-tag">{element}</span>
-                                ))}
-                              </div>
-                            </div>
-
-                            <div className="principle-item">
-                              <h6 className="principle-title">❓ 质疑假设</h6>
-                              <ul className="assumptions-list">
-                                {task.aiAnalysis.assumptions?.map((assumption, index) => (
-                                  <li key={index} className="assumption-item">{assumption}</li>
-                                ))}
-                              </ul>
-                            </div>
-                          </div>
-
                           <div className="analysis-content">
-                            {/* 第一性原理执行步骤 */}
+                            {/* 优化的执行步骤 */}
                             <div className="steps-section">
                               <div className="steps-header">
                                 <h5 className="steps-title">
                                   <Icons.Timer />
-                                  最小必要动作
+                                  执行步骤
                                 </h5>
                                 {task.subtasks.length === 0 && (
                                   <button
@@ -1178,16 +1100,9 @@ const WorkOrganizer = () => {
                               ) : (
                                 <div className="steps-preview">
                                   {task.aiAnalysis.steps.map((step, index) => (
-                                    <div key={index} className="step-preview first-principles-step">
-                                      <div className="step-content">
-                                        <div className="step-text">
-                                          步骤{step.order}: {step.text}
-                                        </div>
-                                        {step.principle && (
-                                          <div className="step-principle">
-                                            💡 {step.principle}
-                                          </div>
-                                        )}
+                                    <div key={index} className="step-preview optimized-step">
+                                      <div className="step-text">
+                                        步骤{step.order}: {step.text}
                                       </div>
                                       <div className="step-duration">
                                         🍅 {formatDuration(step.duration)}
@@ -1198,26 +1113,16 @@ const WorkOrganizer = () => {
                               )}
                             </div>
 
-                            {/* 第一性原理洞察 */}
-                            <div className="insights-section">
-                              <h5 className="insights-title">
+                            {/* 优化建议 */}
+                            <div className="tips-section">
+                              <h5 className="tips-title">
                                 <Icons.Lightbulb />
-                                第一性原理洞察
+                                执行建议
                               </h5>
-                              <ul className="insights-list">
-                                {task.aiAnalysis.firstPrinciplesInsights?.map((insight, index) => (
-                                  <li key={index} className="insight-item">
-                                    <span className="insight-icon">🧠</span>
-                                    <span>{insight}</span>
-                                  </li>
-                                ))}
-                              </ul>
-                              
-                              <h6 className="tips-subtitle">效率原则</h6>
                               <ul className="tips-list">
                                 {task.aiAnalysis.tips.map((tip, index) => (
                                   <li key={index} className="tip-item">
-                                    <span className="tip-icon">⚡</span>
+                                    <span className="tip-icon">💡</span>
                                     <span>{tip}</span>
                                   </li>
                                 ))}
