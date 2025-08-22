@@ -406,60 +406,95 @@ const WorkOrganizer = () => {
 
   // 改进的AI分析功能
   const analyzeTask = useCallback(async (taskId, taskText, duration = 60) => {
-    setAnalyzingTasks(prev => new Set([...prev, taskId]));
+    // 立即创建本地副本，避免闭包问题
+    const currentTaskId = taskId;
+    const currentTaskText = taskText;
+    const currentDuration = duration;
     
-    // 模拟分析延迟
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    setAnalyzingTasks(prev => new Set([...prev, currentTaskId]));
     
-    const taskType = identifyTaskType(taskText);
-    const strategy = TASK_BREAKDOWN_STRATEGIES[taskType];
-    
-    let analysis;
-    if (strategy) {
-      const result = strategy(taskText, duration);
-      analysis = {
-        taskType,
-        analysis: `基于任务特点"${taskText}"，识别为${getTaskTypeLabel(taskType)}类型。${result.description}`,
-        totalDuration: duration,
-        steps: result.steps.map((step, index) => ({
-          ...step,
-          order: index + 1
-        })),
-        tips: result.tips
-      };
-    } else {
-      // 通用分解逻辑
-      analysis = {
-        taskType: 'general',
-        analysis: `为"${taskText}"制定了通用执行方案，专注核心目标的实现`,
-        totalDuration: duration,
-        steps: [
-          { text: "明确具体的成功标准", duration: Math.round(duration * 0.2), order: 1 },
-          { text: "执行核心工作内容", duration: Math.round(duration * 0.6), order: 2 },
-          { text: "检查结果并记录要点", duration: Math.round(duration * 0.2), order: 3 }
-        ],
-        tips: [
-          "专注最重要的部分",
-          "及时调整方法",
-          "记录关键成果"
-        ]
-      };
+    try {
+      // 模拟分析延迟
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      const taskType = identifyTaskType(currentTaskText);
+      const strategy = TASK_BREAKDOWN_STRATEGIES[taskType];
+      
+      let analysis;
+      if (strategy) {
+        const result = strategy(currentTaskText, currentDuration);
+        analysis = {
+          taskType,
+          analysis: `基于任务特点"${currentTaskText}"，识别为${getTaskTypeLabel(taskType)}类型。${result.description}`,
+          totalDuration: currentDuration,
+          steps: result.steps.map((step, index) => ({
+            ...step,
+            order: index + 1,
+            id: `${currentTaskId}-step-${index}` // 添加唯一ID
+          })),
+          tips: result.tips,
+          analyzedAt: Date.now() // 添加分析时间戳
+        };
+      } else {
+        // 通用分解逻辑
+        analysis = {
+          taskType: 'general',
+          analysis: `为"${currentTaskText}"制定了通用执行方案，专注核心目标的实现`,
+          totalDuration: currentDuration,
+          steps: [
+            { 
+              text: "明确具体的成功标准", 
+              duration: Math.round(currentDuration * 0.2), 
+              order: 1,
+              id: `${currentTaskId}-step-0`
+            },
+            { 
+              text: "执行核心工作内容", 
+              duration: Math.round(currentDuration * 0.6), 
+              order: 2,
+              id: `${currentTaskId}-step-1`
+            },
+            { 
+              text: "检查结果并记录要点", 
+              duration: Math.round(currentDuration * 0.2), 
+              order: 3,
+              id: `${currentTaskId}-step-2`
+            }
+          ],
+          tips: [
+            "专注最重要的部分",
+            "及时调整方法",
+            "记录关键成果"
+          ],
+          analyzedAt: Date.now()
+        };
+      }
+      
+      // 确保状态更新的原子性
+      setTasks(prevTasks => {
+        const newTasks = prevTasks.map(task => {
+          if (task.id === currentTaskId) {
+            return { 
+              ...task, 
+              aiAnalysis: { ...analysis } // 创建新对象避免引用共享
+            };
+          }
+          return task;
+        });
+        return newTasks;
+      });
+      
+      setExpandedAnalysis(prev => new Set([...prev, currentTaskId]));
+      
+    } catch (error) {
+      console.error('AI分析失败:', error);
+    } finally {
+      setAnalyzingTasks(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(currentTaskId);
+        return newSet;
+      });
     }
-    
-    setTasks(prevTasks => 
-      prevTasks.map(task => 
-        task.id === taskId 
-          ? { ...task, aiAnalysis: analysis }
-          : task
-      )
-    );
-    
-    setExpandedAnalysis(prev => new Set([...prev, taskId]));
-    setAnalyzingTasks(prev => {
-      const newSet = new Set(prev);
-      newSet.delete(taskId);
-      return newSet;
-    });
   }, [identifyTaskType]);
 
   const getTaskTypeLabel = (type) => {
