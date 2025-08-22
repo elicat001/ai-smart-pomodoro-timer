@@ -1055,13 +1055,13 @@ const WorkOrganizer = () => {
                         </div>
                       </div>
 
-                      {/* AI分析结果 */}
+                      {/* 第一性原理AI分析结果 */}
                       {task.aiAnalysis && expandedAnalysis.has(task.id) && (
                         <div className="analysis-section">
                           <div className="analysis-header">
                             <h4 className="analysis-title">
                               <Icons.Brain />
-                              AI番茄钟规划
+                              第一性原理分析
                               <span className="analysis-duration">
                                 (总计: {formatDuration(task.aiAnalysis.totalDuration)})
                               </span>
@@ -1071,13 +1071,39 @@ const WorkOrganizer = () => {
                             </p>
                           </div>
 
+                          {/* 第一性原理核心信息 */}
+                          <div className="first-principles-overview">
+                            <div className="principle-item">
+                              <h6 className="principle-title">🎯 核心目标</h6>
+                              <p className="principle-content">{task.aiAnalysis.coreObjective}</p>
+                            </div>
+                            
+                            <div className="principle-item">
+                              <h6 className="principle-title">🔍 基本要素</h6>
+                              <div className="elements-list">
+                                {task.aiAnalysis.fundamentalElements?.map((element, index) => (
+                                  <span key={index} className="element-tag">{element}</span>
+                                ))}
+                              </div>
+                            </div>
+
+                            <div className="principle-item">
+                              <h6 className="principle-title">❓ 质疑假设</h6>
+                              <ul className="assumptions-list">
+                                {task.aiAnalysis.assumptions?.map((assumption, index) => (
+                                  <li key={index} className="assumption-item">{assumption}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          </div>
+
                           <div className="analysis-content">
-                            {/* 番茄钟步骤 */}
+                            {/* 第一性原理执行步骤 */}
                             <div className="steps-section">
                               <div className="steps-header">
                                 <h5 className="steps-title">
                                   <Icons.Timer />
-                                  执行步骤
+                                  最小必要动作
                                 </h5>
                                 {task.subtasks.length === 0 && (
                                   <button
@@ -1152,9 +1178,16 @@ const WorkOrganizer = () => {
                               ) : (
                                 <div className="steps-preview">
                                   {task.aiAnalysis.steps.map((step, index) => (
-                                    <div key={index} className="step-preview">
-                                      <div className="step-text">
-                                        步骤{step.order}: {step.text}
+                                    <div key={index} className="step-preview first-principles-step">
+                                      <div className="step-content">
+                                        <div className="step-text">
+                                          步骤{step.order}: {step.text}
+                                        </div>
+                                        {step.principle && (
+                                          <div className="step-principle">
+                                            💡 {step.principle}
+                                          </div>
+                                        )}
                                       </div>
                                       <div className="step-duration">
                                         🍅 {formatDuration(step.duration)}
@@ -1165,16 +1198,26 @@ const WorkOrganizer = () => {
                               )}
                             </div>
 
-                            {/* 实用技巧 */}
-                            <div className="tips-section">
-                              <h5 className="tips-title">
+                            {/* 第一性原理洞察 */}
+                            <div className="insights-section">
+                              <h5 className="insights-title">
                                 <Icons.Lightbulb />
-                                效率技巧
+                                第一性原理洞察
                               </h5>
+                              <ul className="insights-list">
+                                {task.aiAnalysis.firstPrinciplesInsights?.map((insight, index) => (
+                                  <li key={index} className="insight-item">
+                                    <span className="insight-icon">🧠</span>
+                                    <span>{insight}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                              
+                              <h6 className="tips-subtitle">效率原则</h6>
                               <ul className="tips-list">
                                 {task.aiAnalysis.tips.map((tip, index) => (
                                   <li key={index} className="tip-item">
-                                    <span className="tip-icon">💡</span>
+                                    <span className="tip-icon">⚡</span>
                                     <span>{tip}</span>
                                   </li>
                                 ))}
