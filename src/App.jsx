@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import './App.css';
 
 // 图标组件（使用Unicode字符代替Lucide图标）
@@ -32,217 +32,304 @@ const Icons = {
   Star: () => <span>⭐</span>
 };
 
-const WorkOrganizer = () => {
-  const [tasks, setTasks] = useState([]);
-  const [newTask, setNewTask] = useState('');
-  const [selectedPriority, setSelectedPriority] = useState('medium');
-  const [selectedTime, setSelectedTime] = useState('');
-  const [estimatedDuration, setEstimatedDuration] = useState('');
-  const [filter, setFilter] = useState('all');
-  const [editingId, setEditingId] = useState(null);
-  const [editingText, setEditingText] = useState('');
-  const [analyzingTasks, setAnalyzingTasks] = useState(new Set());
-  const [expandedAnalysis, setExpandedAnalysis] = useState(new Set());
+// 任务类型识别的关键词映射
+const TASK_KEYWORDS = {
+  learning: ['学习', '研究', '阅读', '掌握', '理解', '熟悉', '了解', '学会'],
+  coding: ['编程', '开发', '代码', '实现', '调试', '优化', '重构', 'bug'],
+  writing: ['写', '撰写', '编写', '起草', '文档', '报告', '文章', '方案'],
+  meeting: ['会议', '讨论', '沟通', '汇报', '演讲', '分享', '交流'],
+  analysis: ['分析', '调研', '研究', '评估', '整理', '总结', '梳理'],
+  design: ['设计', '规划', '策划', '构思', '原型', '界面', 'UI'],
+  practice: ['练习', '训练', '提升', '锻炼', '复习', '巩固'],
+  creative: ['创作', '创意', '构思', '头脑风暴', '想法', '创新'],
+  review: ['检查', '审核', '校对', '测试', '验证', '确认'],
+  planning: ['计划', '安排', '组织', '筹备', '准备', '安排']
+};
+
+// 具体的任务分解策略
+const TASK_BREAKDOWN_STRATEGIES = {
+  learning: (taskText, duration) => {
+    const isComplexTopic = duration > 90;
+    return {
+      description: "运用费曼学习法，快速建立认知框架",
+      steps: isComplexTopic ? [
+        { text: "花5分钟浏览全局，找到核心概念清单", duration: Math.round(duration * 0.08) },
+        { text: "选择最重要的3个概念，直接查找实例", duration: Math.round(duration * 0.25) },
+        { text: "尝试用自己的话解释给假想的朋友", duration: Math.round(duration * 0.3) },
+        { text: "找到一个可以立即应用的场景", duration: Math.round(duration * 0.2) },
+        { text: "记录3个关键要点和1个疑问", duration: Math.round(duration * 0.17) }
+      ] : [
+        { text: "直接找到最关键的核心要点", duration: Math.round(duration * 0.3) },
+        { text: "找一个具体例子来理解", duration: Math.round(duration * 0.4) },
+        { text: "用自己的话复述一遍", duration: Math.round(duration * 0.3) }
+      ],
+      tips: [
+        "先看结论和总结，再看详细内容",
+        "边学边想现实应用场景",
+        "卡住时立即换个角度或资源"
+      ]
+    };
+  },
   
-  // 番茄钟状态
+  coding: (taskText, duration) => {
+    const isBugFix = taskText.includes('bug') || taskText.includes('修复') || taskText.includes('调试');
+    const isNewFeature = taskText.includes('实现') || taskText.includes('开发') || taskText.includes('新增');
+    
+    if (isBugFix) {
+      return {
+        description: "采用系统性调试法，快速定位和解决问题",
+        steps: [
+          { text: "复现问题，记录具体现象", duration: Math.round(duration * 0.25) },
+          { text: "检查最近的代码变更", duration: Math.round(duration * 0.15) },
+          { text: "添加调试信息，定位问题代码段", duration: Math.round(duration * 0.35) },
+          { text: "修复并验证解决方案", duration: Math.round(duration * 0.25) }
+        ],
+        tips: [
+          "先找最可能的原因，不要从头调试",
+          "善用console.log和断点",
+          "修复后要测试相关功能"
+        ]
+      };
+    } else if (isNewFeature) {
+      return {
+        description: "采用最小可行产品思路，快速实现核心功能",
+        steps: [
+          { text: "明确最核心的功能需求", duration: Math.round(duration * 0.15) },
+          { text: "先写出最简单能跑的版本", duration: Math.round(duration * 0.45) },
+          { text: "测试核心流程是否正常", duration: Math.round(duration * 0.2) },
+          { text: "优化用户体验和边界情况", duration: Math.round(duration * 0.2) }
+        ],
+        tips: [
+          "先让功能跑起来，再考虑优雅",
+          "及时测试，避免积累太多问题",
+          "重要的是解决问题，不是炫技"
+        ]
+      };
+    } else {
+      return {
+        description: "采用渐进式开发，确保每一步都能验证",
+        steps: [
+          { text: "搭建基础框架，确认环境", duration: Math.round(duration * 0.2) },
+          { text: "实现核心逻辑", duration: Math.round(duration * 0.5) },
+          { text: "测试和调试", duration: Math.round(duration * 0.3) }
+        ],
+        tips: [
+          "经常保存和提交代码",
+          "一次只专注一个功能",
+          "代码要简洁易懂"
+        ]
+      };
+    }
+  },
+  
+  writing: (taskText, duration) => {
+    const isLongForm = duration > 60;
+    return {
+      description: "运用结构化写作法，确保思路清晰",
+      steps: isLongForm ? [
+        { text: "明确目标读者和核心信息", duration: Math.round(duration * 0.15) },
+        { text: "列出3-5个主要论点或章节", duration: Math.round(duration * 0.15) },
+        { text: "快速写出第一稿，不要纠结细节", duration: Math.round(duration * 0.45) },
+        { text: "检查逻辑结构和关键信息", duration: Math.round(duration * 0.15) },
+        { text: "润色语言和格式", duration: Math.round(duration * 0.1) }
+      ] : [
+        { text: "明确要表达的核心观点", duration: Math.round(duration * 0.2) },
+        { text: "快速写出完整草稿", duration: Math.round(duration * 0.6) },
+        { text: "检查和修改", duration: Math.round(duration * 0.2) }
+      ],
+      tips: [
+        "先写框架，再填内容",
+        "第一稿重在完整，不求完美",
+        "多用具体例子说明观点"
+      ]
+    };
+  },
+  
+  meeting: (taskText, duration) => {
+    const isPresentation = taskText.includes('演讲') || taskText.includes('汇报') || taskText.includes('分享');
+    
+    if (isPresentation) {
+      return {
+        description: "采用金字塔原理，确保信息传达有效",
+        steps: [
+          { text: "明确听众最关心的1个问题", duration: Math.round(duration * 0.2) },
+          { text: "准备核心观点和3个支撑论据", duration: Math.round(duration * 0.4) },
+          { text: "预演关键部分，准备互动环节", duration: Math.round(duration * 0.4) }
+        ],
+        tips: [
+          "先说结论，再说理由",
+          "准备具体的数据和例子",
+          "预想可能的问题和回答"
+        ]
+      };
+    } else {
+      return {
+        description: "采用积极倾听法，确保沟通有效",
+        steps: [
+          { text: "准备要讨论的关键问题清单", duration: Math.round(duration * 0.3) },
+          { text: "会议中记录关键信息和行动项", duration: Math.round(duration * 0.5) },
+          { text: "会后5分钟整理结论和下一步", duration: Math.round(duration * 0.2) }
+        ],
+        tips: [
+          "会前明确目标和议程",
+          "多问开放性问题",
+          "确认重要信息是否理解正确"
+        ]
+      };
+    }
+  },
+  
+  analysis: (taskText, duration) => {
+    return {
+      description: "运用5W1H分析法，系统梳理信息",
+      steps: [
+        { text: "收集所有相关信息和数据", duration: Math.round(duration * 0.3) },
+        { text: "从What/Why/How三个角度分析", duration: Math.round(duration * 0.4) },
+        { text: "总结关键发现和可行建议", duration: Math.round(duration * 0.3) }
+      ],
+      tips: [
+        "先看全局再看细节",
+        "数据要客观，结论要基于事实",
+        "重点是可执行的建议"
+      ]
+    };
+  },
+  
+  design: (taskText, duration) => {
+    return {
+      description: "采用设计思维流程，从用户需求出发",
+      steps: [
+        { text: "明确用户场景和核心需求", duration: Math.round(duration * 0.25) },
+        { text: "快速绘制3个不同方案", duration: Math.round(duration * 0.4) },
+        { text: "选择最优方案细化关键细节", duration: Math.round(duration * 0.35) }
+      ],
+      tips: [
+        "先解决核心问题，再考虑体验",
+        "多画草图，少纠结工具",
+        "经常问自己：用户会怎么使用？"
+      ]
+    };
+  },
+  
+  practice: (taskText, duration) => {
+    return {
+      description: "采用刻意练习法，专注薄弱环节",
+      steps: [
+        { text: "识别当前最需要改进的技能点", duration: Math.round(duration * 0.2) },
+        { text: "重复练习这个特定技能", duration: Math.round(duration * 0.6) },
+        { text: "记录练习结果和改进点", duration: Math.round(duration * 0.2) }
+      ],
+      tips: [
+        "质量比数量重要",
+        "离开舒适区，练习困难的部分",
+        "及时获得反馈并调整"
+      ]
+    };
+  },
+  
+  creative: (taskText, duration) => {
+    return {
+      description: "运用发散-收敛思维，激发创意灵感",
+      steps: [
+        { text: "设定明确的创作目标和约束", duration: Math.round(duration * 0.15) },
+        { text: "发散思维：产出大量想法不评判", duration: Math.round(duration * 0.45) },
+        { text: "收敛筛选：选择最有潜力的想法", duration: Math.round(duration * 0.25) },
+        { text: "快速制作原型或草稿", duration: Math.round(duration * 0.15) }
+      ],
+      tips: [
+        "先追求数量，再追求质量",
+        "借鉴不同领域的灵感",
+        "约束能激发更多创意"
+      ]
+    };
+  },
+  
+  review: (taskText, duration) => {
+    return {
+      description: "采用系统检查法，确保质量标准",
+      steps: [
+        { text: "制定检查清单和标准", duration: Math.round(duration * 0.2) },
+        { text: "逐项检查，记录发现的问题", duration: Math.round(duration * 0.6) },
+        { text: "整理问题清单并确定优先级", duration: Math.round(duration * 0.2) }
+      ],
+      tips: [
+        "检查要有明确的标准",
+        "重点关注影响最大的问题",
+        "及时反馈给相关人员"
+      ]
+    };
+  }
+};
+
+// 自定义Hooks
+const useLocalStorage = (key, initialValue) => {
+  const [storedValue, setStoredValue] = useState(() => {
+    try {
+      const item = window.localStorage.getItem(`aipomodoro_${key}`);
+      return item ? JSON.parse(item) : initialValue;
+    } catch (error) {
+      console.error('读取localStorage失败:', error);
+      return initialValue;
+    }
+  });
+
+  const setValue = useCallback((value) => {
+    try {
+      const valueToStore = value instanceof Function ? value(storedValue) : value;
+      setStoredValue(valueToStore);
+      window.localStorage.setItem(`aipomodoro_${key}`, JSON.stringify(valueToStore));
+    } catch (error) {
+      console.error('保存localStorage失败:', error);
+    }
+  }, [key, storedValue]);
+
+  return [storedValue, setValue];
+};
+
+const usePomodoroTimer = () => {
   const [activePomodoroId, setActivePomodoroId] = useState(null);
   const [pomodoroTime, setPomodoroTime] = useState(0);
   const [pomodoroStatus, setPomodoroStatus] = useState('idle');
-  const [pomodoroHistory, setPomodoroHistory] = useState([]);
-  
-  // 数据管理状态
-  const [dataMode, setDataMode] = useState('local');
-  const [showDataManager, setShowDataManager] = useState(false);
-  const [showBackupReminder, setShowBackupReminder] = useState(false);
-  const [appStats, setAppStats] = useState({
-    daysUsed: 0,
-    totalTasks: 0,
-    totalPomodoros: 0,
-    firstUse: null
-  });
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [userInfo, setUserInfo] = useState(null);
-  
-  // 新增状态
-  const [dailyGoal, setDailyGoal] = useState(6); // 每日番茄钟目标
-  const [focusStreak, setFocusStreak] = useState(0); // 连续专注天数
-  const [weeklyStats, setWeeklyStats] = useState([]);
-  const [achievements, setAchievements] = useState([]);
-  
   const intervalRef = useRef(null);
 
-  // 本地存储管理
-  const saveToLocal = (key, data) => {
-    try {
-      const storage = JSON.stringify(data);
-      localStorage.setItem(`aipomodoro_${key}`, storage);
-    } catch (error) {
-      console.error('保存数据失败:', error);
+  const startPomodoro = useCallback((taskId, subtaskId, duration, taskName, subtaskName) => {
+    if (activePomodoroId) {
+      stopPomodoro();
     }
-  };
-
-  const loadFromLocal = (key) => {
-    try {
-      const data = localStorage.getItem(`aipomodoro_${key}`);
-      return data ? JSON.parse(data) : null;
-    } catch (error) {
-      console.error('读取数据失败:', error);
-      return null;
-    }
-  };
-
-  // 生成周统计数据
-  const generateWeeklyStats = () => {
-    const today = new Date();
-    const weekData = [];
     
-    for (let i = 6; i >= 0; i--) {
-      const date = new Date(today);
-      date.setDate(date.getDate() - i);
-      const dateStr = date.toDateString();
-      
-      const dayPomodoros = pomodoroHistory.filter(p => p.date === dateStr);
-      weekData.push({
-        day: date.toLocaleDateString('zh-CN', { weekday: 'short' }),
-        date: dateStr,
-        count: dayPomodoros.length,
-        time: dayPomodoros.reduce((sum, p) => sum + (p.duration || 0), 0)
+    setActivePomodoroId(subtaskId || taskId);
+    setPomodoroTime(duration * 60);
+    setPomodoroStatus('running');
+    
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification(`🍅 开始专注：${subtaskName || taskName}`, {
+        body: `预计用时 ${duration} 分钟`,
+        icon: '/favicon.ico'
       });
     }
-    
-    setWeeklyStats(weekData);
-  };
+  }, [activePomodoroId]);
 
-  // 计算成就
-  const calculateAchievements = () => {
-    const newAchievements = [];
-    const totalPomodoros = pomodoroHistory.length;
-    const todayPomodoros = getTodayPomodoroStats().totalSessions;
-    
-    // 基础成就
-    if (totalPomodoros >= 1) newAchievements.push({ id: 'first', name: '首次专注', icon: '🌱' });
-    if (totalPomodoros >= 10) newAchievements.push({ id: 'ten', name: '十次专注', icon: '🔥' });
-    if (totalPomodoros >= 50) newAchievements.push({ id: 'fifty', name: '专注达人', icon: '💪' });
-    if (totalPomodoros >= 100) newAchievements.push({ id: 'hundred', name: '专注大师', icon: '🏆' });
-    
-    // 每日成就
-    if (todayPomodoros >= dailyGoal) newAchievements.push({ id: 'daily', name: '今日目标达成', icon: '⭐' });
-    if (todayPomodoros >= 10) newAchievements.push({ id: 'super', name: '超级专注日', icon: '💎' });
-    
-    // 连续性成就
-    if (focusStreak >= 3) newAchievements.push({ id: 'streak3', name: '连续专注3天', icon: '🔥' });
-    if (focusStreak >= 7) newAchievements.push({ id: 'streak7', name: '连续专注一周', icon: '👑' });
-    
-    setAchievements(newAchievements);
-  };
-
-  // 初始化数据
-  useEffect(() => {
-    const savedTasks = loadFromLocal('tasks');
-    const savedHistory = loadFromLocal('pomodoroHistory');
-    const savedStats = loadFromLocal('appStats');
-    const savedGoal = loadFromLocal('dailyGoal');
-    const savedStreak = loadFromLocal('focusStreak');
-    
-    if (savedTasks) {
-      setTasks(savedTasks);
-    } else {
-      const sampleTasks = [
-        {
-          id: 1,
-          text: '体验AI智能分析功能',
-          priority: 'high',
-          time: '',
-          estimatedDuration: 30,
-          completed: false,
-          category: 'demo',
-          aiAnalysis: null,
-          subtasks: [],
-          createdAt: new Date().toISOString()
-        }
-      ];
-      setTasks(sampleTasks);
-      saveToLocal('tasks', sampleTasks);
-    }
-
-    if (savedHistory) {
-      setPomodoroHistory(savedHistory);
-    }
-
-    if (savedGoal) {
-      setDailyGoal(savedGoal);
-    }
-
-    if (savedStreak) {
-      setFocusStreak(savedStreak);
-    }
-
-    let stats = savedStats || {
-      daysUsed: 1,
-      totalTasks: 0,
-      totalPomodoros: 0,
-      firstUse: new Date().toISOString()
-    };
-
-    const daysSinceFirstUse = Math.floor((Date.now() - new Date(stats.firstUse).getTime()) / (1000 * 60 * 60 * 24));
-    stats.daysUsed = Math.max(1, daysSinceFirstUse);
-    
-    setAppStats(stats);
-    saveToLocal('appStats', stats);
-
-    checkBackupReminder(stats);
+  const pausePomodoro = useCallback(() => {
+    setPomodoroStatus('paused');
   }, []);
 
-  // 当番茄钟历史更新时，重新计算统计
-  useEffect(() => {
-    generateWeeklyStats();
-    calculateAchievements();
-  }, [pomodoroHistory, dailyGoal, focusStreak]);
+  const resumePomodoro = useCallback(() => {
+    setPomodoroStatus('running');
+  }, []);
 
-  const checkBackupReminder = (stats) => {
-    const shouldShowReminder = 
-      stats.daysUsed >= 3 || 
-      stats.totalTasks >= 5 || 
-      stats.totalPomodoros >= 10;
+  const stopPomodoro = useCallback(() => {
+    setActivePomodoroId(null);
+    setPomodoroTime(0);
+    setPomodoroStatus('idle');
+  }, []);
 
-    if (shouldShowReminder && !isLoggedIn) {
-      setTimeout(() => setShowBackupReminder(true), 5000);
-    }
-  };
+  const completePomodoroSession = useCallback(() => {
+    setPomodoroStatus('completed');
+    setTimeout(() => {
+      stopPomodoro();
+    }, 3000);
+  }, [stopPomodoro]);
 
-  // 数据自动保存
-  useEffect(() => {
-    if (tasks.length > 0) {
-      saveToLocal('tasks', tasks);
-      setAppStats(prev => {
-        const newStats = { ...prev, totalTasks: tasks.length };
-        saveToLocal('appStats', newStats);
-        return newStats;
-      });
-    }
-  }, [tasks]);
-
-  useEffect(() => {
-    if (pomodoroHistory.length > 0) {
-      saveToLocal('pomodoroHistory', pomodoroHistory);
-      setAppStats(prev => {
-        const newStats = { ...prev, totalPomodoros: pomodoroHistory.length };
-        saveToLocal('appStats', newStats);
-        return newStats;
-      });
-    }
-  }, [pomodoroHistory]);
-
-  // 保存目标和连击
-  useEffect(() => {
-    saveToLocal('dailyGoal', dailyGoal);
-  }, [dailyGoal]);
-
-  useEffect(() => {
-    saveToLocal('focusStreak', focusStreak);
-  }, [focusStreak]);
-
-  // 番茄钟计时器
   useEffect(() => {
     if (pomodoroStatus === 'running' && pomodoroTime > 0) {
       intervalRef.current = setInterval(() => {
@@ -259,9 +346,141 @@ const WorkOrganizer = () => {
     }
 
     return () => clearInterval(intervalRef.current);
-  }, [pomodoroStatus, pomodoroTime]);
+  }, [pomodoroStatus, pomodoroTime, completePomodoroSession]);
 
-  const addTask = () => {
+  return {
+    activePomodoroId,
+    pomodoroTime,
+    pomodoroStatus,
+    startPomodoro,
+    pausePomodoro,
+    resumePomodoro,
+    stopPomodoro,
+    completePomodoroSession
+  };
+};
+
+const WorkOrganizer = () => {
+  // 基础状态
+  const [tasks, setTasks] = useLocalStorage('tasks', []);
+  const [newTask, setNewTask] = useState('');
+  const [selectedPriority, setSelectedPriority] = useState('medium');
+  const [selectedTime, setSelectedTime] = useState('');
+  const [estimatedDuration, setEstimatedDuration] = useState('');
+  const [filter, setFilter] = useState('all');
+  const [editingId, setEditingId] = useState(null);
+  const [editingText, setEditingText] = useState('');
+  const [analyzingTasks, setAnalyzingTasks] = useState(new Set());
+  const [expandedAnalysis, setExpandedAnalysis] = useState(new Set());
+  
+  // 番茄钟相关
+  const pomodoroHook = usePomodoroTimer();
+  const [pomodoroHistory, setPomodoroHistory] = useLocalStorage('pomodoroHistory', []);
+  
+  // 统计和目标
+  const [dailyGoal, setDailyGoal] = useLocalStorage('dailyGoal', 6);
+  const [focusStreak, setFocusStreak] = useLocalStorage('focusStreak', 0);
+  const [appStats, setAppStats] = useLocalStorage('appStats', {
+    daysUsed: 1,
+    totalTasks: 0,
+    totalPomodoros: 0,
+    firstUse: new Date().toISOString()
+  });
+  
+  // UI状态
+  const [showBackupReminder, setShowBackupReminder] = useState(false);
+  const [isLoggedIn] = useState(false);
+
+  // 智能识别任务类型
+  const identifyTaskType = useCallback((taskText) => {
+    const text = taskText.toLowerCase();
+    
+    for (const [type, keywords] of Object.entries(TASK_KEYWORDS)) {
+      if (keywords.some(keyword => text.includes(keyword))) {
+        return type;
+      }
+    }
+    
+    return 'general';
+  }, []);
+
+  // 改进的AI分析功能
+  const analyzeTask = useCallback(async (taskId, taskText, duration = 60) => {
+    setAnalyzingTasks(prev => new Set([...prev, taskId]));
+    
+    // 模拟分析延迟
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    
+    const taskType = identifyTaskType(taskText);
+    const strategy = TASK_BREAKDOWN_STRATEGIES[taskType];
+    
+    let analysis;
+    if (strategy) {
+      const result = strategy(taskText, duration);
+      analysis = {
+        taskType,
+        analysis: `基于任务特点"${taskText}"，识别为${getTaskTypeLabel(taskType)}类型。${result.description}`,
+        totalDuration: duration,
+        steps: result.steps.map((step, index) => ({
+          ...step,
+          order: index + 1
+        })),
+        tips: result.tips
+      };
+    } else {
+      // 通用分解逻辑
+      analysis = {
+        taskType: 'general',
+        analysis: `为"${taskText}"制定了通用执行方案，专注核心目标的实现`,
+        totalDuration: duration,
+        steps: [
+          { text: "明确具体的成功标准", duration: Math.round(duration * 0.2), order: 1 },
+          { text: "执行核心工作内容", duration: Math.round(duration * 0.6), order: 2 },
+          { text: "检查结果并记录要点", duration: Math.round(duration * 0.2), order: 3 }
+        ],
+        tips: [
+          "专注最重要的部分",
+          "及时调整方法",
+          "记录关键成果"
+        ]
+      };
+    }
+    
+    setTasks(prevTasks => 
+      prevTasks.map(task => 
+        task.id === taskId 
+          ? { ...task, aiAnalysis: analysis }
+          : task
+      )
+    );
+    
+    setExpandedAnalysis(prev => new Set([...prev, taskId]));
+    setAnalyzingTasks(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(taskId);
+      return newSet;
+    });
+  }, [identifyTaskType]);
+
+  const getTaskTypeLabel = (type) => {
+    const labels = {
+      learning: '学习研究',
+      coding: '编程开发', 
+      writing: '写作文档',
+      meeting: '会议沟通',
+      analysis: '分析调研',
+      design: '设计规划',
+      practice: '练习训练',
+      creative: '创意创作',
+      review: '检查审核',
+      planning: '计划安排',
+      general: '通用任务'
+    };
+    return labels[type] || '通用任务';
+  };
+
+  // 任务操作
+  const addTask = useCallback(() => {
     if (newTask.trim()) {
       const task = {
         id: Date.now(),
@@ -275,273 +494,38 @@ const WorkOrganizer = () => {
         subtasks: [],
         createdAt: new Date().toISOString()
       };
-      setTasks([...tasks, task]);
+      setTasks(prev => [...prev, task]);
       setNewTask('');
       setSelectedTime('');
       setEstimatedDuration('');
     }
-  };
+  }, [newTask, selectedPriority, selectedTime, estimatedDuration, setTasks]);
 
-  const toggleTask = (id) => {
-    setTasks(tasks.map(task => 
+  const toggleTask = useCallback((id) => {
+    setTasks(prev => prev.map(task => 
       task.id === id ? { ...task, completed: !task.completed } : task
     ));
-  };
+  }, [setTasks]);
 
-  const deleteTask = (id) => {
-    setTasks(tasks.filter(task => task.id !== id));
-  };
+  const deleteTask = useCallback((id) => {
+    setTasks(prev => prev.filter(task => task.id !== id));
+  }, [setTasks]);
 
-  const startEdit = (id, text) => {
+  const startEdit = useCallback((id, text) => {
     setEditingId(id);
     setEditingText(text);
-  };
+  }, []);
 
-  const saveEdit = () => {
-    setTasks(tasks.map(task => 
+  const saveEdit = useCallback(() => {
+    setTasks(prev => prev.map(task => 
       task.id === editingId ? { ...task, text: editingText } : task
     ));
     setEditingId(null);
     setEditingText('');
-  };
+  }, [editingId, editingText, setTasks]);
 
-  // 番茄钟功能
-  const startPomodoro = (taskId, subtaskId, duration, taskName, subtaskName) => {
-    if (activePomodoroId) {
-      stopPomodoro();
-    }
-    
-    setActivePomodoroId(subtaskId || taskId);
-    setPomodoroTime(duration * 60);
-    setPomodoroStatus('running');
-    
-    if ('Notification' in window && Notification.permission === 'granted') {
-      new Notification(`🍅 开始专注：${subtaskName || taskName}`, {
-        body: `预计用时 ${duration} 分钟`,
-        icon: '/favicon.ico'
-      });
-    }
-  };
-
-  const pausePomodoro = () => {
-    setPomodoroStatus('paused');
-  };
-
-  const resumePomodoro = () => {
-    setPomodoroStatus('running');
-  };
-
-  const stopPomodoro = () => {
-    setActivePomodoroId(null);
-    setPomodoroTime(0);
-    setPomodoroStatus('idle');
-  };
-
-  const completePomodoroSession = () => {
-    const activeTask = tasks.find(t => 
-      t.id === activePomodoroId || 
-      t.subtasks.some(s => s.id === activePomodoroId)
-    );
-    
-    if (activeTask) {
-      const activeSubtask = activeTask.subtasks.find(s => s.id === activePomodoroId);
-      const taskName = activeTask.text;
-      const subtaskName = activeSubtask ? activeSubtask.text : taskName;
-      const duration = activeSubtask ? activeSubtask.duration : activeTask.estimatedDuration;
-
-      const pomodoroRecord = {
-        id: Date.now(),
-        taskName,
-        subtaskName,
-        duration,
-        completedAt: new Date().toISOString(),
-        date: new Date().toDateString(),
-        efficiency: 'high'
-      };
-
-      setPomodoroHistory(prev => [pomodoroRecord, ...prev]);
-
-      if (activeSubtask) {
-        toggleSubtask(activeTask.id, activePomodoroId);
-      }
-
-      // 检查是否达成今日目标
-      const todayCount = getTodayPomodoroStats().totalSessions + 1;
-      if (todayCount === dailyGoal) {
-        if ('Notification' in window && Notification.permission === 'granted') {
-          new Notification('🎉 今日目标达成！', {
-            body: `恭喜完成今日 ${dailyGoal} 个番茄钟目标！`,
-            icon: '/favicon.ico'
-          });
-        }
-      }
-
-      if ('Notification' in window && Notification.permission === 'granted') {
-        new Notification('🎉 番茄钟完成！', {
-          body: `恭喜完成「${subtaskName}」，休息一下吧！`,
-          icon: '/favicon.ico'
-        });
-      }
-    }
-
-    setPomodoroStatus('completed');
-    setTimeout(() => {
-      stopPomodoro();
-    }, 3000);
-  };
-
-  // 第一性原理任务分解功能
-  const analyzeTask = async (taskId, taskText, duration) => {
-    setAnalyzingTasks(prev => new Set([...prev, taskId]));
-    
-    // 模拟第一性原理分析
-    setTimeout(() => {
-      const analysis = applyFirstPrinciplesThinking(taskText, duration);
-      
-      setTasks(prevTasks => 
-        prevTasks.map(task => 
-          task.id === taskId 
-            ? { ...task, aiAnalysis: analysis }
-            : task
-        )
-      );
-      
-      setExpandedAnalysis(prev => new Set([...prev, taskId]));
-      setAnalyzingTasks(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(taskId);
-        return newSet;
-      });
-    }, 2000);
-  };
-
-  // 运用第一性原理思维重新设计任务执行方案
-  const applyFirstPrinciplesThinking = (taskText, duration) => {
-    const taskType = identifyTaskType(taskText);
-    const optimizedSteps = generateOptimizedSteps(taskText, taskType, duration);
-    
-    return {
-      analysis: `已运用第一性原理重新设计"${taskText}"的执行方案，去除传统方法中的冗余步骤，专注最直接有效的路径。`,
-      totalDuration: duration || 60,
-      steps: optimizedSteps,
-      tips: getOptimizationTips(taskType)
-    };
-  };
-
-  // 识别任务类型
-  const identifyTaskType = (taskText) => {
-    const text = taskText.toLowerCase();
-    if (text.includes('学习') || text.includes('研究') || text.includes('阅读') || text.includes('掌握')) return 'learning';
-    if (text.includes('写') || text.includes('报告') || text.includes('文档') || text.includes('创作')) return 'creation';
-    if (text.includes('会议') || text.includes('讨论') || text.includes('沟通') || text.includes('演讲')) return 'communication';
-    if (text.includes('分析') || text.includes('解决') || text.includes('问题') || text.includes('调研')) return 'analysis';
-    if (text.includes('设计') || text.includes('规划') || text.includes('策划') || text.includes('方案')) return 'design';
-    if (text.includes('练习') || text.includes('训练') || text.includes('提升')) return 'practice';
-    return 'general';
-  };
-
-  // 生成优化后的执行步骤
-  const generateOptimizedSteps = (taskText, taskType, duration) => {
-    const totalDuration = duration || 60;
-    
-    // 基于第一性原理重新设计的执行方案
-    const optimizedPlans = {
-      learning: [
-        { text: "直接找到核心概念，跳过铺垫材料", duration: Math.round(totalDuration * 0.2) },
-        { text: "立即尝试应用，在实践中理解", duration: Math.round(totalDuration * 0.5) },
-        { text: "用自己的话解释给别人听", duration: Math.round(totalDuration * 0.2) },
-        { text: "找到一个具体应用场景", duration: Math.round(totalDuration * 0.1) }
-      ],
-      creation: [
-        { text: "明确最终用户真正需要什么", duration: Math.round(totalDuration * 0.15) },
-        { text: "直接产出最简版本", duration: Math.round(totalDuration * 0.5) },
-        { text: "获得真实反馈", duration: Math.round(totalDuration * 0.2) },
-        { text: "基于反馈优化关键部分", duration: Math.round(totalDuration * 0.15) }
-      ],
-      communication: [
-        { text: "确定对方真正关心的问题", duration: Math.round(totalDuration * 0.2) },
-        { text: "准备一个核心观点", duration: Math.round(totalDuration * 0.3) },
-        { text: "直接表达并观察反应", duration: Math.round(totalDuration * 0.3) },
-        { text: "基于反应调整下一步", duration: Math.round(totalDuration * 0.2) }
-      ],
-      analysis: [
-        { text: "找到最关键的数据源", duration: Math.round(totalDuration * 0.25) },
-        { text: "提出最可能的假设", duration: Math.round(totalDuration * 0.25) },
-        { text: "设计最简单的验证方法", duration: Math.round(totalDuration * 0.3) },
-        { text: "得出可执行的结论", duration: Math.round(totalDuration * 0.2) }
-      ],
-      design: [
-        { text: "理解真实的约束条件", duration: Math.round(totalDuration * 0.2) },
-        { text: "直接画出最简方案", duration: Math.round(totalDuration * 0.4) },
-        { text: "测试核心功能", duration: Math.round(totalDuration * 0.25) },
-        { text: "优化最重要的部分", duration: Math.round(totalDuration * 0.15) }
-      ],
-      practice: [
-        { text: "找到最核心的技能点", duration: Math.round(totalDuration * 0.15) },
-        { text: "重复练习这个核心动作", duration: Math.round(totalDuration * 0.6) },
-        { text: "在真实场景中应用", duration: Math.round(totalDuration * 0.15) },
-        { text: "记录改进点", duration: Math.round(totalDuration * 0.1) }
-      ],
-      general: [
-        { text: "明确成功的最低标准", duration: Math.round(totalDuration * 0.2) },
-        { text: "找到最直接的执行路径", duration: Math.round(totalDuration * 0.5) },
-        { text: "验证结果是否达标", duration: Math.round(totalDuration * 0.2) },
-        { text: "记录可复用的方法", duration: Math.round(totalDuration * 0.1) }
-      ]
-    };
-
-    const plan = optimizedPlans[taskType] || optimizedPlans.general;
-    
-    return plan.map((step, index) => ({
-      ...step,
-      order: index + 1
-    }));
-  };
-
-  // 获取优化建议
-  const getOptimizationTips = (taskType) => {
-    const tips = {
-      learning: [
-        "跳过理论，直接从实例开始",
-        "教别人是最快的学习方式",
-        "找到最小的可理解单元"
-      ],
-      creation: [
-        "先做出来，再做好",
-        "用户反馈比自我完善更重要",
-        "最简版本往往最有效"
-      ],
-      communication: [
-        "先听再说，理解比表达重要",
-        "一次只传达一个核心信息",
-        "观察反应比完美表达重要"
-      ],
-      analysis: [
-        "假设驱动，而非数据驱动",
-        "寻找最简单的解释",
-        "验证比分析更重要"
-      ],
-      design: [
-        "约束是创造力的来源",
-        "功能决定一切",
-        "简单方案往往更可靠"
-      ],
-      practice: [
-        "质量比数量重要",
-        "在真实环境中练习",
-        "专注一个技能直到熟练"
-      ],
-      general: [
-        "结果导向，而非过程导向",
-        "快速试错比完美计划有效",
-        "简单直接胜过复杂精巧"
-      ]
-    };
-    
-    return tips[taskType] || tips.general;
-  };
-
-  const convertStepsToSubtasks = (taskId) => {
+  // 子任务操作
+  const convertStepsToSubtasks = useCallback((taskId) => {
     const task = tasks.find(t => t.id === taskId);
     if (!task?.aiAnalysis?.steps) return;
 
@@ -562,9 +546,9 @@ const WorkOrganizer = () => {
           : t
       )
     );
-  };
+  }, [tasks, setTasks]);
 
-  const toggleSubtask = (taskId, subtaskId) => {
+  const toggleSubtask = useCallback((taskId, subtaskId) => {
     setTasks(prevTasks => 
       prevTasks.map(task => 
         task.id === taskId 
@@ -583,9 +567,9 @@ const WorkOrganizer = () => {
           : task
       )
     );
-  };
+  }, [setTasks]);
 
-  const toggleAnalysisExpanded = (taskId) => {
+  const toggleAnalysisExpanded = useCallback((taskId) => {
     setExpandedAnalysis(prev => {
       const newSet = new Set(prev);
       if (newSet.has(taskId)) {
@@ -595,90 +579,215 @@ const WorkOrganizer = () => {
       }
       return newSet;
     });
-  };
+  }, []);
+
+  // 完成番茄钟会话的处理
+  const handlePomodoroComplete = useCallback((activeTask, activeSubtask, duration) => {
+    const taskName = activeTask.text;
+    const subtaskName = activeSubtask ? activeSubtask.text : taskName;
+
+    const pomodoroRecord = {
+      id: Date.now(),
+      taskName,
+      subtaskName,
+      duration,
+      completedAt: new Date().toISOString(),
+      date: new Date().toDateString(),
+      efficiency: 'high'
+    };
+
+    setPomodoroHistory(prev => [pomodoroRecord, ...prev]);
+
+    if (activeSubtask) {
+      toggleSubtask(activeTask.id, pomodoroHook.activePomodoroId);
+    }
+
+    // 通知处理
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification('🎉 番茄钟完成！', {
+        body: `恭喜完成「${subtaskName}」，休息一下吧！`,
+        icon: '/favicon.ico'
+      });
+    }
+  }, [setPomodoroHistory, toggleSubtask, pomodoroHook.activePomodoroId]);
+
+  // 修改完成番茄钟的逻辑
+  useEffect(() => {
+    if (pomodoroHook.pomodoroStatus === 'completed') {
+      const activeTask = tasks.find(t => 
+        t.id === pomodoroHook.activePomodoroId || 
+        t.subtasks.some(s => s.id === pomodoroHook.activePomodoroId)
+      );
+      
+      if (activeTask) {
+        const activeSubtask = activeTask.subtasks.find(s => s.id === pomodoroHook.activePomodoroId);
+        const duration = activeSubtask ? activeSubtask.duration : activeTask.estimatedDuration;
+        handlePomodoroComplete(activeTask, activeSubtask, duration);
+      }
+    }
+  }, [pomodoroHook.pomodoroStatus, pomodoroHook.activePomodoroId, tasks, handlePomodoroComplete]);
 
   // 工具函数
-  const formatTime = (seconds) => {
+  const formatTime = useCallback((seconds) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
+  }, []);
 
-  const formatDuration = (minutes) => {
+  const formatDuration = useCallback((minutes) => {
     if (!minutes) return '';
     if (minutes < 60) return `${minutes}分钟`;
     const hours = Math.floor(minutes / 60);
     const mins = minutes % 60;
     return mins > 0 ? `${hours}小时${mins}分钟` : `${hours}小时`;
-  };
+  }, []);
 
-  const getPriorityColor = (priority) => {
+  const getPriorityColor = useCallback((priority) => {
     switch (priority) {
       case 'high': return 'high-priority';
       case 'medium': return 'medium-priority';
       case 'low': return 'low-priority';
       default: return 'default-priority';
     }
-  };
+  }, []);
 
-  const filteredTasks = tasks.filter(task => {
-    if (filter === 'completed') return task.completed;
-    if (filter === 'pending') return !task.completed;
-    return true;
-  });
-
-  const sortedTasks = filteredTasks.sort((a, b) => {
-    const priorityOrder = { high: 3, medium: 2, low: 1 };
-    if (priorityOrder[a.priority] !== priorityOrder[b.priority]) {
-      return priorityOrder[b.priority] - priorityOrder[a.priority];
-    }
-    if (a.time && b.time) {
-      return a.time.localeCompare(b.time);
-    }
-    return 0;
-  });
-
-  const getStats = () => {
+  // 计算统计数据
+  const stats = useMemo(() => {
     const total = tasks.length;
     const completed = tasks.filter(t => t.completed).length;
     const high = tasks.filter(t => t.priority === 'high' && !t.completed).length;
     const aiAnalyzed = tasks.filter(t => t.aiAnalysis).length;
     return { total, completed, high, pending: total - completed, aiAnalyzed };
-  };
+  }, [tasks]);
 
-  const getTodayPomodoroStats = () => {
+  const pomodoroStats = useMemo(() => {
     const today = new Date().toDateString();
     const todayPomodoros = pomodoroHistory.filter(p => p.date === today);
     const totalTime = todayPomodoros.reduce((sum, p) => sum + p.duration, 0);
     const totalSessions = todayPomodoros.length;
-    
     return { totalTime, totalSessions };
-  };
+  }, [pomodoroHistory]);
 
-  const getEfficiencyScore = () => {
-    const todayStats = getTodayPomodoroStats();
-    const completionRate = Math.min((todayStats.totalSessions / dailyGoal) * 100, 100);
+  const weeklyStats = useMemo(() => {
+    const today = new Date();
+    const weekData = [];
+    
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date(today);
+      date.setDate(date.getDate() - i);
+      const dateStr = date.toDateString();
+      
+      const dayPomodoros = pomodoroHistory.filter(p => p.date === dateStr);
+      weekData.push({
+        day: date.toLocaleDateString('zh-CN', { weekday: 'short' }),
+        date: dateStr,
+        count: dayPomodoros.length,
+        time: dayPomodoros.reduce((sum, p) => sum + (p.duration || 0), 0)
+      });
+    }
+    
+    return weekData;
+  }, [pomodoroHistory]);
+
+  const achievements = useMemo(() => {
+    const newAchievements = [];
+    const totalPomodoros = pomodoroHistory.length;
+    const todayPomodoros = pomodoroStats.totalSessions;
+    
+    if (totalPomodoros >= 1) newAchievements.push({ id: 'first', name: '首次专注', icon: '🌱' });
+    if (totalPomodoros >= 10) newAchievements.push({ id: 'ten', name: '十次专注', icon: '🔥' });
+    if (totalPomodoros >= 50) newAchievements.push({ id: 'fifty', name: '专注达人', icon: '💪' });
+    if (totalPomodoros >= 100) newAchievements.push({ id: 'hundred', name: '专注大师', icon: '🏆' });
+    
+    if (todayPomodoros >= dailyGoal) newAchievements.push({ id: 'daily', name: '今日目标达成', icon: '⭐' });
+    if (todayPomodoros >= 10) newAchievements.push({ id: 'super', name: '超级专注日', icon: '💎' });
+    
+    if (focusStreak >= 3) newAchievements.push({ id: 'streak3', name: '连续专注3天', icon: '🔥' });
+    if (focusStreak >= 7) newAchievements.push({ id: 'streak7', name: '连续专注一周', icon: '👑' });
+    
+    return newAchievements;
+  }, [pomodoroHistory.length, pomodoroStats.totalSessions, dailyGoal, focusStreak]);
+
+  const filteredTasks = useMemo(() => {
+    return tasks.filter(task => {
+      if (filter === 'completed') return task.completed;
+      if (filter === 'pending') return !task.completed;
+      return true;
+    });
+  }, [tasks, filter]);
+
+  const sortedTasks = useMemo(() => {
+    return filteredTasks.sort((a, b) => {
+      const priorityOrder = { high: 3, medium: 2, low: 1 };
+      if (priorityOrder[a.priority] !== priorityOrder[b.priority]) {
+        return priorityOrder[b.priority] - priorityOrder[a.priority];
+      }
+      if (a.time && b.time) {
+        return a.time.localeCompare(b.time);
+      }
+      return 0;
+    });
+  }, [filteredTasks]);
+
+  const getEfficiencyScore = useCallback(() => {
+    const completionRate = Math.min((pomodoroStats.totalSessions / dailyGoal) * 100, 100);
     return Math.round(completionRate);
-  };
-
-  const stats = getStats();
-  const pomodoroStats = getTodayPomodoroStats();
+  }, [pomodoroStats.totalSessions, dailyGoal]);
 
   function getPomodoroOriginalTime() {
-    if (!activePomodoroId) return 25;
+    if (!pomodoroHook.activePomodoroId) return 25;
     
     const activeTask = tasks.find(t => 
-      t.id === activePomodoroId || 
-      t.subtasks.some(s => s.id === activePomodoroId)
+      t.id === pomodoroHook.activePomodoroId || 
+      t.subtasks.some(s => s.id === pomodoroHook.activePomodoroId)
     );
     
     if (activeTask) {
-      const activeSubtask = activeTask.subtasks.find(s => s.id === activePomodoroId);
+      const activeSubtask = activeTask.subtasks.find(s => s.id === pomodoroHook.activePomodoroId);
       return activeSubtask ? activeSubtask.duration : activeTask.estimatedDuration || 25;
     }
     
     return 25;
   }
+
+  // 初始化和备份提醒
+  useEffect(() => {
+    if (tasks.length === 0) {
+      const sampleTasks = [
+        {
+          id: 1,
+          text: '体验AI智能分析功能',
+          priority: 'high',
+          time: '',
+          estimatedDuration: 30,
+          completed: false,
+          category: 'demo',
+          aiAnalysis: null,
+          subtasks: [],
+          createdAt: new Date().toISOString()
+        }
+      ];
+      setTasks(sampleTasks);
+    }
+
+    // 检查备份提醒
+    const shouldShowReminder = 
+      appStats.daysUsed >= 3 || 
+      stats.total >= 5 || 
+      pomodoroHistory.length >= 10;
+
+    if (shouldShowReminder && !isLoggedIn) {
+      const timer = setTimeout(() => setShowBackupReminder(true), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, []);
+
+  // 请求通知权限
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, []);
 
   return (
     <div className="app-container">
@@ -726,7 +835,7 @@ const WorkOrganizer = () => {
             <div className="header-stats">
               <div className="header-actions">
                 <button
-                  onClick={() => setShowDataManager(true)}
+                  onClick={() => alert('数据管理功能开发中...')}
                   className="header-btn"
                   title="数据管理"
                 >
@@ -769,41 +878,41 @@ const WorkOrganizer = () => {
             </div>
 
             {/* 番茄钟状态栏 */}
-            {pomodoroStatus !== 'idle' && (
+            {pomodoroHook.pomodoroStatus !== 'idle' && (
               <div className="pomodoro-status">
                 <div className="pomodoro-info">
                   <div className="pomodoro-indicator"></div>
                   <span className="pomodoro-text">
-                    {pomodoroStatus === 'running' ? '🍅 专注中' : 
-                     pomodoroStatus === 'paused' ? '⏸️ 已暂停' : '✅ 已完成'}
+                    {pomodoroHook.pomodoroStatus === 'running' ? '🍅 专注中' : 
+                     pomodoroHook.pomodoroStatus === 'paused' ? '⏸️ 已暂停' : '✅ 已完成'}
                   </span>
                 </div>
                 <div className="pomodoro-controls">
                   <div className="pomodoro-timer">
-                    {formatTime(pomodoroTime)}
+                    {formatTime(pomodoroHook.pomodoroTime)}
                   </div>
                   <div className="pomodoro-buttons">
-                    {pomodoroStatus === 'running' && (
-                      <button onClick={pausePomodoro} className="pomodoro-btn">
+                    {pomodoroHook.pomodoroStatus === 'running' && (
+                      <button onClick={pomodoroHook.pausePomodoro} className="pomodoro-btn">
                         <Icons.Pause />
                       </button>
                     )}
-                    {pomodoroStatus === 'paused' && (
-                      <button onClick={resumePomodoro} className="pomodoro-btn">
+                    {pomodoroHook.pomodoroStatus === 'paused' && (
+                      <button onClick={pomodoroHook.resumePomodoro} className="pomodoro-btn">
                         <Icons.Play />
                       </button>
                     )}
-                    <button onClick={stopPomodoro} className="pomodoro-btn">
+                    <button onClick={pomodoroHook.stopPomodoro} className="pomodoro-btn">
                       <Icons.Square />
                     </button>
                   </div>
                 </div>
-                {pomodoroStatus === 'running' && (
+                {pomodoroHook.pomodoroStatus === 'running' && (
                   <div className="pomodoro-progress">
                     <div 
                       className="pomodoro-progress-bar"
                       style={{
-                        width: `${100 - (pomodoroTime / (getPomodoroOriginalTime() * 60)) * 100}%`
+                        width: `${100 - (pomodoroHook.pomodoroTime / (getPomodoroOriginalTime() * 60)) * 100}%`
                       }}
                     ></div>
                   </div>
@@ -818,7 +927,7 @@ const WorkOrganizer = () => {
                   type="text"
                   value={newTask}
                   onChange={(e) => setNewTask(e.target.value)}
-                  placeholder="添加任务，AI帮你分解步骤..."
+                  placeholder="添加任务，AI智能识别类型并分解步骤..."
                   className="task-input"
                   onKeyPress={(e) => e.key === 'Enter' && addTask()}
                 />
@@ -851,7 +960,7 @@ const WorkOrganizer = () => {
                 </button>
               </div>
               <div className="tip-text">
-                💡 极简体验：直接使用，数据自动保存到本地。需要多设备同步可点击右上角☁️
+                💡 极简体验：AI能识别10种任务类型，提供针对性的执行步骤分解
               </div>
             </div>
 
@@ -886,7 +995,7 @@ const WorkOrganizer = () => {
                   <Icons.Timer />
                   <p className="empty-title">开始添加你的第一个任务吧！</p>
                   <p className="empty-subtitle">
-                    🚀 极简设计：打开即用，AI智能分析，番茄钟专注
+                    🚀 AI智能分析：学习、编程、写作、会议等10种任务类型专业分解
                   </p>
                 </div>
               ) : (
@@ -951,9 +1060,9 @@ const WorkOrganizer = () => {
                           {/* 直接开始番茄钟 */}
                           {task.estimatedDuration && !task.completed && (
                             <button
-                              onClick={() => startPomodoro(task.id, null, task.estimatedDuration, task.text, task.text)}
-                              disabled={activePomodoroId === task.id}
-                              className={`action-btn pomodoro-btn ${activePomodoroId === task.id ? 'active' : ''}`}
+                              onClick={() => pomodoroHook.startPomodoro(task.id, null, task.estimatedDuration, task.text, task.text)}
+                              disabled={pomodoroHook.activePomodoroId === task.id}
+                              className={`action-btn pomodoro-btn ${pomodoroHook.activePomodoroId === task.id ? 'active' : ''}`}
                               title="开始番茄钟"
                             >
                               <Icons.Play />
@@ -1009,7 +1118,7 @@ const WorkOrganizer = () => {
                           <div className="analysis-header">
                             <h4 className="analysis-title">
                               <Icons.Brain />
-                              AI优化执行方案
+                              AI智能分解 - {getTaskTypeLabel(task.aiAnalysis.taskType)}
                               <span className="analysis-duration">
                                 (总计: {formatDuration(task.aiAnalysis.totalDuration)})
                               </span>
@@ -1064,15 +1173,15 @@ const WorkOrganizer = () => {
                                       </div>
                                       {!subtask.completed && (
                                         <button
-                                          onClick={() => startPomodoro(
+                                          onClick={() => pomodoroHook.startPomodoro(
                                             task.id, 
                                             subtask.id, 
                                             subtask.duration, 
                                             task.text, 
                                             subtask.text
                                           )}
-                                          disabled={activePomodoroId === subtask.id}
-                                          className={`subtask-play-btn ${activePomodoroId === subtask.id ? 'active' : ''}`}
+                                          disabled={pomodoroHook.activePomodoroId === subtask.id}
+                                          className={`subtask-play-btn ${pomodoroHook.activePomodoroId === subtask.id ? 'active' : ''}`}
                                           title="开始这个步骤的番茄钟"
                                         >
                                           <Icons.Play />
@@ -1266,11 +1375,11 @@ const WorkOrganizer = () => {
             <div className="sidebar-section">
               <h4 className="sidebar-tips-title">💡 使用提示</h4>
               <ul className="sidebar-tips-list">
-                <li>• 设置预计时间，AI分析更准确</li>
-                <li>• 点击🧠获得智能步骤分解</li>
+                <li>• AI能识别学习、编程、写作等10种任务类型</li>
+                <li>• 点击🧠获得针对性的步骤分解</li>
+                <li>• 每种任务类型都有专门的执行策略</li>
                 <li>• 点击▶️开始对应时长番茄钟</li>
-                <li>• 调整每日目标激励自己</li>
-                <li>• 保持连续专注获得成就</li>
+                <li>• 保持连续专注获得成就徽章</li>
               </ul>
             </div>
 
