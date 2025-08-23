@@ -172,7 +172,7 @@ const DataManager = {
       
       // 收集所有相关数据
       const allData = {};
-      const keys = ['tasks', 'pomodoroHistory', 'dailyGoal', 'focusStreak', 'appStats'];
+      const keys = ['tasks', 'pomodoroHistory', 'dailyGoal', 'focusStreak', 'appStats', 'aiConfig'];
       
       keys.forEach(key => {
         const item = localStorage.getItem(`aipomodoro_${key}`);
@@ -211,39 +211,7 @@ const DataManager = {
     }
   },
   
-  // 清理重复的番茄钟数据
-  const cleanupPomodoroHistory = useCallback(() => {
-    setPomodoroHistory(prev => {
-      const cleanedHistory = [];
-      const seenRecords = new Set();
-      
-      for (const record of prev) {
-        // 创建唯一标识符
-        const recordKey = `${record.date}_${record.taskName}_${record.subtaskName}_${new Date(record.completedAt).getHours()}_${new Date(record.completedAt).getMinutes()}`;
-        
-        if (!seenRecords.has(recordKey)) {
-          seenRecords.add(recordKey);
-          cleanedHistory.push(record);
-        }
-      }
-      
-      console.log(`清理番茄钟数据：原有${prev.length}条，清理后${cleanedHistory.length}条`);
-      return cleanedHistory;
-    });
-  }, [setPomodoroHistory]);
-  
-  // 重置番茄钟数据
-  const resetPomodoroHistory = useCallback(() => {
-    if (window.confirm('确定要清空所有番茄钟历史记录吗？此操作不可恢复！')) {
-      setPomodoroHistory([]);
-      console.log('番茄钟历史记录已重置');
-      setImportExportStatus({
-        type: 'success',
-        message: '番茄钟历史记录已重置'
-      });
-      setTimeout(() => setImportExportStatus(null), 3000);
-    }
-  }, [setPomodoroHistory]);
+  // 导入数据
   importData: (encryptedData) => {
     try {
       const userId = generateUserIdHash();
@@ -421,6 +389,335 @@ const WorkOrganizer = () => {
   const [importExportStatus, setImportExportStatus] = useState(null);
   const [storageStats, setStorageStats] = useState(null);
 
+  // AI设置状态
+  const [showAISettings, setShowAISettings] = useState(false);
+  const [aiConfig, setAiConfig] = useLocalStorage('aiConfig', {
+    provider: 'local', // 'local' | 'deepseek' | 'openai'
+    apiKey: '',
+    model: 'deepseek-chat', // DeepSeek: 'deepseek-chat' | 'deepseek-reasoner', OpenAI: 'gpt-4' | 'gpt-3.5-turbo'
+    enabled: true
+  });
+
+  // 防止重复处理的标记
+  const processedPomodoroRef = useRef(new Set());
+
+  // DeepSeek API调用
+  const callDeepSeekAPI = useCallback(async (taskText, duration) => {
+    if (!aiConfig.apiKey) {
+      throw new Error('请先配置DeepSeek API Key');
+    }
+
+    const prompt = `你是一个专业的任务分解专家。请分析以下任务并提供执行方案：
+
+任务内容：${taskText}
+预计时长：${duration}分钟
+
+请按照以下JSON格式返回分析结果（只返回JSON，不要包含其他文字）：
+{
+  "taskType": "任务类型(learning/coding/writing/meeting/analysis/design/practice/creative/review/planning/testing/general)",
+  "description": "简短的执行策略描述",
+  "steps": [
+    {
+      "text": "步骤描述",
+      "duration": 预计分钟数,
+      "order": 步骤序号
+    }
+  ],
+  "tips": [
+    "执行建议1",
+    "执行建议2",
+    "执行建议3"
+  ]
+}
+
+要求：
+1. steps数组应包含3-5个具体的执行步骤
+2. 每个步骤的duration总和应该等于${duration}
+3. 步骤要实用、可操作
+4. tips要针对具体任务类型给出专业建议`;
+
+    try {
+      const response = await fetch('https://api.deepseek.com/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${aiConfig.apiKey}`
+        },
+        body: JSON.stringify({
+          model: aiConfig.model,
+          messages: [
+            {
+              role: 'system',
+              content: '你是一个专业的任务分解和时间管理专家，擅长将复杂任务分解为具体可执行的步骤。'
+            },
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          max_tokens: 2000,
+          temperature: 0.7
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(`API请求失败: ${response.status} ${errorData.error?.message || response.statusText}`);
+      }
+
+      const data = await response.json();
+      const content = data.choices[0]?.message?.content;
+
+      if (!content) {
+        throw new Error('API返回数据格式错误');
+      }
+
+      // 尝试解析JSON响应
+      let jsonStr = content.trim();
+      
+      // 移除可能的markdown代码块标记
+      jsonStr = jsonStr.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+      
+      // 查找JSON对象
+      const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        jsonStr = jsonMatch[0];
+      }
+
+      const aiResult = JSON.parse(jsonStr);
+      
+      // 验证响应格式
+      if (!aiResult.taskType || !aiResult.steps || !Array.isArray(aiResult.steps)) {
+        throw new Error('AI返回的数据格式不正确');
+      }
+
+      return aiResult;
+      
+    } catch (error) {
+      console.error('DeepSeek API调用失败:', error);
+      throw error;
+    }
+  }, [aiConfig.apiKey, aiConfig.model]);
+
+  // OpenAI API调用
+  const callOpenAIAPI = useCallback(async (taskText, duration) => {
+    if (!aiConfig.apiKey) {
+      throw new Error('请先配置OpenAI API Key');
+    }
+
+    const prompt = `你是一个专业的任务分解专家。请分析以下任务并提供执行方案：
+
+任务内容：${taskText}
+预计时长：${duration}分钟
+
+请按照以下JSON格式返回分析结果（只返回JSON，不要包含其他文字）：
+{
+  "taskType": "任务类型(learning/coding/writing/meeting/analysis/design/practice/creative/review/planning/testing/general)",
+  "description": "简短的执行策略描述",
+  "steps": [
+    {
+      "text": "步骤描述",
+      "duration": 预计分钟数,
+      "order": 步骤序号
+    }
+  ],
+  "tips": [
+    "执行建议1",
+    "执行建议2",
+    "执行建议3"
+  ]
+}
+
+要求：
+1. steps数组应包含3-5个具体的执行步骤
+2. 每个步骤的duration总和应该等于${duration}
+3. 步骤要实用、可操作
+4. tips要针对具体任务类型给出专业建议`;
+
+    try {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${aiConfig.apiKey}`
+        },
+        body: JSON.stringify({
+          model: aiConfig.model,
+          messages: [
+            {
+              role: 'system',
+              content: '你是一个专业的任务分解和时间管理专家，擅长将复杂任务分解为具体可执行的步骤。'
+            },
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          max_tokens: 2000,
+          temperature: 0.7
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(`API请求失败: ${response.status} ${errorData.error?.message || response.statusText}`);
+      }
+
+      const data = await response.json();
+      const content = data.choices[0]?.message?.content;
+
+      if (!content) {
+        throw new Error('API返回数据格式错误');
+      }
+
+      // 尝试解析JSON响应
+      let jsonStr = content.trim();
+      
+      // 移除可能的markdown代码块标记
+      jsonStr = jsonStr.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+      
+      // 查找JSON对象
+      const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        jsonStr = jsonMatch[0];
+      }
+
+      const aiResult = JSON.parse(jsonStr);
+      
+      // 验证响应格式
+      if (!aiResult.taskType || !aiResult.steps || !Array.isArray(aiResult.steps)) {
+        throw new Error('AI返回的数据格式不正确');
+      }
+
+      return aiResult;
+      
+    } catch (error) {
+      console.error('OpenAI API调用失败:', error);
+      throw error;
+    }
+  }, [aiConfig.apiKey, aiConfig.model]);
+
+  // 导出数据
+  const handleExportData = useCallback(() => {
+    try {
+      const result = DataManager.exportData();
+      if (result.success) {
+        // 创建下载链接
+        const blob = new Blob([result.data], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = result.filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        
+        setImportExportStatus({
+          type: 'success',
+          message: `数据已成功导出到 ${result.filename}`
+        });
+      } else {
+        setImportExportStatus({
+          type: 'error',
+          message: `导出失败: ${result.error}`
+        });
+      }
+    } catch (error) {
+      setImportExportStatus({
+        type: 'error',
+        message: `导出失败: ${error.message}`
+      });
+    }
+    
+    // 3秒后清除状态
+    setTimeout(() => setImportExportStatus(null), 3000);
+  }, []);
+  
+  // 导入数据
+  const handleImportData = useCallback((event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const encryptedData = e.target.result;
+        const result = DataManager.importData(encryptedData);
+        
+        if (result.success) {
+          setImportExportStatus({
+            type: 'success',
+            message: `数据导入成功! 导入了 ${result.dataKeys.length} 项数据`
+          });
+          
+          // 刷新页面以重新加载数据
+          setTimeout(() => {
+            window.location.reload();
+          }, 2000);
+        } else {
+          setImportExportStatus({
+            type: 'error',
+            message: `导入失败: ${result.error}`
+          });
+        }
+      } catch (error) {
+        setImportExportStatus({
+          type: 'error',
+          message: `导入失败: ${error.message}`
+        });
+      }
+    };
+    
+    reader.readAsText(file);
+    
+    // 清空input
+    event.target.value = '';
+    
+    // 3秒后清除状态
+    setTimeout(() => setImportExportStatus(null), 3000);
+  }, []);
+  
+  // 更新存储统计
+  const updateStorageStats = useCallback(() => {
+    const stats = DataManager.getStorageStats();
+    setStorageStats(stats);
+  }, []);
+
+  // 清理重复的番茄钟数据
+  const cleanupPomodoroHistory = useCallback(() => {
+    setPomodoroHistory(prev => {
+      const cleanedHistory = [];
+      const seenRecords = new Set();
+      
+      for (const record of prev) {
+        // 创建唯一标识符
+        const recordKey = `${record.date}_${record.taskName}_${record.subtaskName}_${new Date(record.completedAt).getHours()}_${new Date(record.completedAt).getMinutes()}`;
+        
+        if (!seenRecords.has(recordKey)) {
+          seenRecords.add(recordKey);
+          cleanedHistory.push(record);
+        }
+      }
+      
+      console.log(`清理番茄钟数据：原有${prev.length}条，清理后${cleanedHistory.length}条`);
+      return cleanedHistory;
+    });
+  }, [setPomodoroHistory]);
+  
+  // 重置番茄钟数据
+  const resetPomodoroHistory = useCallback(() => {
+    if (window.confirm('确定要清空所有番茄钟历史记录吗？此操作不可恢复！')) {
+      setPomodoroHistory([]);
+      console.log('番茄钟历史记录已重置');
+      setImportExportStatus({
+        type: 'success',
+        message: '番茄钟历史记录已重置'
+      });
+      setTimeout(() => setImportExportStatus(null), 3000);
+    }
+  }, [setPomodoroHistory]);
+
   // 获取任务类型标签
   const getTaskTypeLabel = useCallback((type) => {
     const labels = {
@@ -568,137 +865,6 @@ const WorkOrganizer = () => {
         };
       }
       
-      case 'meeting': {
-        const isPresentation = taskText.includes('演讲') || taskText.includes('汇报') || taskText.includes('分享');
-        
-        if (isPresentation) {
-          return {
-            description: "采用金字塔原理，确保信息传达有效",
-            steps: [
-              { text: "明确听众最关心的1个问题", duration: Math.round(duration * 0.2) },
-              { text: "准备核心观点和3个支撑论据", duration: Math.round(duration * 0.4) },
-              { text: "预演关键部分，准备互动环节", duration: Math.round(duration * 0.4) }
-            ],
-            tips: [
-              "先说结论，再说理由",
-              "准备具体的数据和例子",
-              "预想可能的问题和回答"
-            ]
-          };
-        } else {
-          return {
-            description: "采用积极倾听法，确保沟通有效",
-            steps: [
-              { text: "准备要讨论的关键问题清单", duration: Math.round(duration * 0.3) },
-              { text: "会议中记录关键信息和行动项", duration: Math.round(duration * 0.5) },
-              { text: "会后5分钟整理结论和下一步", duration: Math.round(duration * 0.2) }
-            ],
-            tips: [
-              "会前明确目标和议程",
-              "多问开放性问题",
-              "确认重要信息是否理解正确"
-            ]
-          };
-        }
-      }
-      
-      case 'analysis': {
-        return {
-          description: "运用5W1H分析法，系统梳理信息",
-          steps: [
-            { text: "收集所有相关信息和数据", duration: Math.round(duration * 0.3) },
-            { text: "从What/Why/How三个角度分析", duration: Math.round(duration * 0.4) },
-            { text: "总结关键发现和可行建议", duration: Math.round(duration * 0.3) }
-          ],
-          tips: [
-            "先看全局再看细节",
-            "数据要客观，结论要基于事实",
-            "重点是可执行的建议"
-          ]
-        };
-      }
-      
-      case 'design': {
-        return {
-          description: "采用设计思维流程，从用户需求出发",
-          steps: [
-            { text: "明确用户场景和核心需求", duration: Math.round(duration * 0.25) },
-            { text: "快速绘制3个不同方案", duration: Math.round(duration * 0.4) },
-            { text: "选择最优方案细化关键细节", duration: Math.round(duration * 0.35) }
-          ],
-          tips: [
-            "先解决核心问题，再考虑体验",
-            "多画草图，少纠结工具",
-            "经常问自己：用户会怎么使用？"
-          ]
-        };
-      }
-      
-      case 'practice': {
-        return {
-          description: "采用刻意练习法，专注薄弱环节",
-          steps: [
-            { text: "识别当前最需要改进的技能点", duration: Math.round(duration * 0.2) },
-            { text: "重复练习这个特定技能", duration: Math.round(duration * 0.6) },
-            { text: "记录练习结果和改进点", duration: Math.round(duration * 0.2) }
-          ],
-          tips: [
-            "质量比数量重要",
-            "离开舒适区，练习困难的部分",
-            "及时获得反馈并调整"
-          ]
-        };
-      }
-      
-      case 'creative': {
-        return {
-          description: "运用发散-收敛思维，激发创意灵感",
-          steps: [
-            { text: "设定明确的创作目标和约束", duration: Math.round(duration * 0.15) },
-            { text: "发散思维：产出大量想法不评判", duration: Math.round(duration * 0.45) },
-            { text: "收敛筛选：选择最有潜力的想法", duration: Math.round(duration * 0.25) },
-            { text: "快速制作原型或草稿", duration: Math.round(duration * 0.15) }
-          ],
-          tips: [
-            "先追求数量，再追求质量",
-            "借鉴不同领域的灵感",
-            "约束能激发更多创意"
-          ]
-        };
-      }
-      
-      case 'review': {
-        return {
-          description: "采用系统检查法，确保质量标准",
-          steps: [
-            { text: "制定检查清单和标准", duration: Math.round(duration * 0.2) },
-            { text: "逐项检查，记录发现的问题", duration: Math.round(duration * 0.6) },
-            { text: "整理问题清单并确定优先级", duration: Math.round(duration * 0.2) }
-          ],
-          tips: [
-            "检查要有明确的标准",
-            "重点关注影响最大的问题",
-            "及时反馈给相关人员"
-          ]
-        };
-      }
-      
-      case 'planning': {
-        return {
-          description: "采用时间管理法，合理规划安排",
-          steps: [
-            { text: "明确计划的目标和范围", duration: Math.round(duration * 0.25) },
-            { text: "分解任务并估算时间", duration: Math.round(duration * 0.4) },
-            { text: "制定时间表和检查点", duration: Math.round(duration * 0.35) }
-          ],
-          tips: [
-            "重要的事情先做",
-            "预留缓冲时间",
-            "定期检查进度"
-          ]
-        };
-      }
-      
       default: {
         return {
           description: "制定通用执行方案，专注核心目标的实现",
@@ -717,212 +883,7 @@ const WorkOrganizer = () => {
     }
   }, []);
 
-  // AI设置状态
-  const [showAISettings, setShowAISettings] = useState(false);
-  const [aiConfig, setAiConfig] = useLocalStorage('aiConfig', {
-    provider: 'local', // 'local' | 'deepseek' | 'openai'
-    apiKey: '',
-    model: 'deepseek-chat', // DeepSeek: 'deepseek-chat' | 'deepseek-reasoner', OpenAI: 'gpt-4' | 'gpt-3.5-turbo'
-    enabled: true
-  });
-
-  // OpenAI API调用
-  const callOpenAIAPI = useCallback(async (taskText, duration) => {
-    if (!aiConfig.apiKey) {
-      throw new Error('请先配置OpenAI API Key');
-    }
-
-    const prompt = `你是一个专业的任务分解专家。请分析以下任务并提供执行方案：
-
-任务内容：${taskText}
-预计时长：${duration}分钟
-
-请按照以下JSON格式返回分析结果（只返回JSON，不要包含其他文字）：
-{
-  "taskType": "任务类型(learning/coding/writing/meeting/analysis/design/practice/creative/review/planning/testing/general)",
-  "description": "简短的执行策略描述",
-  "steps": [
-    {
-      "text": "步骤描述",
-      "duration": 预计分钟数,
-      "order": 步骤序号
-    }
-  ],
-  "tips": [
-    "执行建议1",
-    "执行建议2",
-    "执行建议3"
-  ]
-}
-
-要求：
-1. steps数组应包含3-5个具体的执行步骤
-2. 每个步骤的duration总和应该等于${duration}
-3. 步骤要实用、可操作
-4. tips要针对具体任务类型给出专业建议`;
-
-    try {
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${aiConfig.apiKey}`
-        },
-        body: JSON.stringify({
-          model: aiConfig.model,
-          messages: [
-            {
-              role: 'system',
-              content: '你是一个专业的任务分解和时间管理专家，擅长将复杂任务分解为具体可执行的步骤。'
-            },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          max_tokens: 2000,
-          temperature: 0.7
-        })
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(`API请求失败: ${response.status} ${errorData.error?.message || response.statusText}`);
-      }
-
-      const data = await response.json();
-      const content = data.choices[0]?.message?.content;
-
-      if (!content) {
-        throw new Error('API返回数据格式错误');
-      }
-
-      // 尝试解析JSON响应
-      let jsonStr = content.trim();
-      
-      // 移除可能的markdown代码块标记
-      jsonStr = jsonStr.replace(/```json\s*/g, '').replace(/```\s*/g, '');
-      
-      // 查找JSON对象
-      const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        jsonStr = jsonMatch[0];
-      }
-
-      const aiResult = JSON.parse(jsonStr);
-      
-      // 验证响应格式
-      if (!aiResult.taskType || !aiResult.steps || !Array.isArray(aiResult.steps)) {
-        throw new Error('AI返回的数据格式不正确');
-      }
-
-      return aiResult;
-      
-    } catch (error) {
-      console.error('OpenAI API调用失败:', error);
-      throw error;
-    }
-  }, [aiConfig.apiKey, aiConfig.model]);
-
-  // DeepSeek API调用
-  const callDeepSeekAPI = useCallback(async (taskText, duration) => {
-    if (!aiConfig.apiKey) {
-      throw new Error('请先配置DeepSeek API Key');
-    }
-
-    const prompt = `你是一个专业的任务分解专家。请分析以下任务并提供执行方案：
-
-任务内容：${taskText}
-预计时长：${duration}分钟
-
-请按照以下JSON格式返回分析结果（只返回JSON，不要包含其他文字）：
-{
-  "taskType": "任务类型(learning/coding/writing/meeting/analysis/design/practice/creative/review/planning/testing/general)",
-  "description": "简短的执行策略描述",
-  "steps": [
-    {
-      "text": "步骤描述",
-      "duration": 预计分钟数,
-      "order": 步骤序号
-    }
-  ],
-  "tips": [
-    "执行建议1",
-    "执行建议2",
-    "执行建议3"
-  ]
-}
-
-要求：
-1. steps数组应包含3-5个具体的执行步骤
-2. 每个步骤的duration总和应该等于${duration}
-3. 步骤要实用、可操作
-4. tips要针对具体任务类型给出专业建议`;
-
-    try {
-      const response = await fetch('https://api.deepseek.com/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${aiConfig.apiKey}`
-        },
-        body: JSON.stringify({
-          model: aiConfig.model,
-          messages: [
-            {
-              role: 'system',
-              content: '你是一个专业的任务分解和时间管理专家，擅长将复杂任务分解为具体可执行的步骤。'
-            },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          max_tokens: 2000,
-          temperature: 0.7
-        })
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(`API请求失败: ${response.status} ${errorData.error?.message || response.statusText}`);
-      }
-
-      const data = await response.json();
-      const content = data.choices[0]?.message?.content;
-
-      if (!content) {
-        throw new Error('API返回数据格式错误');
-      }
-
-      // 尝试解析JSON响应
-      let jsonStr = content.trim();
-      
-      // 移除可能的markdown代码块标记
-      jsonStr = jsonStr.replace(/```json\s*/g, '').replace(/```\s*/g, '');
-      
-      // 查找JSON对象
-      const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        jsonStr = jsonMatch[0];
-      }
-
-      const aiResult = JSON.parse(jsonStr);
-      
-      // 验证响应格式
-      if (!aiResult.taskType || !aiResult.steps || !Array.isArray(aiResult.steps)) {
-        throw new Error('AI返回的数据格式不正确');
-      }
-
-      return aiResult;
-      
-    } catch (error) {
-      console.error('DeepSeek API调用失败:', error);
-      throw error;
-    }
-  }, [aiConfig.apiKey, aiConfig.model]);
-
-        // 改进的AI分析功能
+  // 改进的AI分析功能
   const analyzeTask = useCallback(async (taskId, taskText, duration = 60) => {
     // 参数验证和类型转换
     if (!taskId || !taskText || typeof taskText !== 'string') {
@@ -1109,75 +1070,6 @@ const WorkOrganizer = () => {
     setEditingText('');
   }, [editingId, editingText, setTasks]);
 
-  // 子任务操作
-  // 重新分析任务 - 彻底修复版本
-  const reAnalyzeTask = useCallback((taskId) => {
-    console.log('=== 重新分析任务 ===', taskId);
-    
-    // 先找到任务数据
-    const targetTask = tasks.find(t => t.id === taskId);
-    if (!targetTask) {
-      console.error('任务不存在:', taskId);
-      return;
-    }
-    
-    if (!targetTask.text || targetTask.text.trim() === '') {
-      console.error('任务文本为空:', targetTask);
-      return;
-    }
-    
-    console.log('目标任务:', {
-      id: targetTask.id,
-      text: targetTask.text,
-      duration: targetTask.estimatedDuration
-    });
-    
-    // 清除旧的分析结果
-    setTasks(prevTasks => 
-      prevTasks.map(task => 
-        task.id === taskId 
-          ? { ...task, aiAnalysis: null, subtasks: [] }
-          : task
-      )
-    );
-    
-    // 清除展开状态
-    setExpandedAnalysis(prev => {
-      const newSet = new Set(prev);
-      newSet.delete(taskId);
-      return newSet;
-    });
-    
-    // 延迟触发新分析
-    setTimeout(() => {
-      console.log('触发新分析:', targetTask.text);
-      analyzeTask(targetTask.id, targetTask.text, targetTask.estimatedDuration || 60);
-    }, 300);
-  }, [tasks]); // 只依赖tasks，不依赖analyzeTask避免循环
-
-  const convertStepsToSubtasks = useCallback((taskId) => {
-    const task = tasks.find(t => t.id === taskId);
-    if (!task?.aiAnalysis?.steps) return;
-
-    const subtasks = task.aiAnalysis.steps.map((step, index) => ({
-      id: `${taskId}-sub-${index}`,
-      text: step.text,
-      duration: step.duration,
-      order: step.order,
-      completed: false,
-      startTime: null,
-      endTime: null
-    }));
-
-    setTasks(prevTasks => 
-      prevTasks.map(t => 
-        t.id === taskId 
-          ? { ...t, subtasks }
-          : t
-      )
-    );
-  }, [tasks]);
-
   // 在任务完成时添加反馈动画和提示
   const handleTaskAutoComplete = useCallback((taskId, taskText) => {
     // 显示任务自动完成的提示
@@ -1241,97 +1133,73 @@ const WorkOrganizer = () => {
     });
   }, []);
 
-  // ===== 数据管理功能 =====
-  
-  // 导出数据
-  const handleExportData = useCallback(() => {
-    try {
-      const result = DataManager.exportData();
-      if (result.success) {
-        // 创建下载链接
-        const blob = new Blob([result.data], { type: 'text/plain' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = result.filename;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-        
-        setImportExportStatus({
-          type: 'success',
-          message: `数据已成功导出到 ${result.filename}`
-        });
-      } else {
-        setImportExportStatus({
-          type: 'error',
-          message: `导出失败: ${result.error}`
-        });
-      }
-    } catch (error) {
-      setImportExportStatus({
-        type: 'error',
-        message: `导出失败: ${error.message}`
-      });
+  // 重新分析任务 - 彻底修复版本
+  const reAnalyzeTask = useCallback((taskId) => {
+    console.log('=== 重新分析任务 ===', taskId);
+    
+    // 先找到任务数据
+    const targetTask = tasks.find(t => t.id === taskId);
+    if (!targetTask) {
+      console.error('任务不存在:', taskId);
+      return;
     }
     
-    // 3秒后清除状态
-    setTimeout(() => setImportExportStatus(null), 3000);
-  }, []);
-  
-  // 导入数据
-  const handleImportData = useCallback((event) => {
-    const file = event.target.files[0];
-    if (!file) return;
+    if (!targetTask.text || targetTask.text.trim() === '') {
+      console.error('任务文本为空:', targetTask);
+      return;
+    }
     
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const encryptedData = e.target.result;
-        const result = DataManager.importData(encryptedData);
-        
-        if (result.success) {
-          setImportExportStatus({
-            type: 'success',
-            message: `数据导入成功! 导入了 ${result.dataKeys.length} 项数据`
-          });
-          
-          // 刷新页面以重新加载数据
-          setTimeout(() => {
-            window.location.reload();
-          }, 2000);
-        } else {
-          setImportExportStatus({
-            type: 'error',
-            message: `导入失败: ${result.error}`
-          });
-        }
-      } catch (error) {
-        setImportExportStatus({
-          type: 'error',
-          message: `导入失败: ${error.message}`
-        });
-      }
-    };
+    console.log('目标任务:', {
+      id: targetTask.id,
+      text: targetTask.text,
+      duration: targetTask.estimatedDuration
+    });
     
-    reader.readAsText(file);
+    // 清除旧的分析结果
+    setTasks(prevTasks => 
+      prevTasks.map(task => 
+        task.id === taskId 
+          ? { ...task, aiAnalysis: null, subtasks: [] }
+          : task
+      )
+    );
     
-    // 清空input
-    event.target.value = '';
+    // 清除展开状态
+    setExpandedAnalysis(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(taskId);
+      return newSet;
+    });
     
-    // 3秒后清除状态
-    setTimeout(() => setImportExportStatus(null), 3000);
-  }, []);
-  
-  // 更新存储统计
-  const updateStorageStats = useCallback(() => {
-    const stats = DataManager.getStorageStats();
-    setStorageStats(stats);
-  }, []);
+    // 延迟触发新分析
+    setTimeout(() => {
+      console.log('触发新分析:', targetTask.text);
+      analyzeTask(targetTask.id, targetTask.text, targetTask.estimatedDuration || 60);
+    }, 300);
+  }, [tasks]);
 
-  // 防止重复处理的标记
-  const processedPomodoroRef = useRef(new Set());
+  const convertStepsToSubtasks = useCallback((taskId) => {
+    const task = tasks.find(t => t.id === taskId);
+    if (!task?.aiAnalysis?.steps) return;
+
+    const subtasks = task.aiAnalysis.steps.map((step, index) => ({
+      id: `${taskId}-sub-${index}`,
+      text: step.text,
+      duration: step.duration,
+      order: step.order,
+      completed: false,
+      startTime: null,
+      endTime: null
+    }));
+
+    setTasks(prevTasks => 
+      prevTasks.map(t => 
+        t.id === taskId 
+          ? { ...t, subtasks }
+          : t
+      )
+    );
+  }, [tasks]);
 
   // 完成番茄钟会话的处理
   const handlePomodoroComplete = useCallback((activeTask, activeSubtask, duration, pomodoroId) => {
@@ -1683,7 +1551,11 @@ const WorkOrganizer = () => {
                       name="provider"
                       value="deepseek"
                       checked={aiConfig.provider === 'deepseek'}
-                      onChange={(e) => setAiConfig(prev => ({ ...prev, provider: e.target.value }))}
+                      onChange={(e) => setAiConfig(prev => ({ 
+                        ...prev, 
+                        provider: e.target.value,
+                        model: e.target.value === 'deepseek' ? 'deepseek-chat' : prev.model
+                      }))}
                     />
                     <div className="provider-info">
                       <div className="provider-name">
@@ -1775,7 +1647,7 @@ const WorkOrganizer = () => {
                 <div className="usage-info">
                   <div className="usage-item">
                     <Icons.Star />
-                    <span>DeepSeek API提供更智能的任务分解和个性化建议</span>
+                    <span>AI提供更智能的任务分解和个性化建议</span>
                   </div>
                   <div className="usage-item">
                     <Icons.Lock />
@@ -1783,7 +1655,7 @@ const WorkOrganizer = () => {
                   </div>
                   <div className="usage-item">
                     <Icons.Zap />
-                    <span>每次分析大约消耗0.001-0.01元，成本极低</span>
+                    <span>每次分析大约消耗0.001-0.02元，成本极低</span>
                   </div>
                 </div>
               </div>
@@ -1813,6 +1685,8 @@ const WorkOrganizer = () => {
           </div>
         </div>
       )}
+
+      {/* 数据管理弹窗 */}
       {showDataManager && (
         <div className="modal-overlay">
           <div className="modal-content data-manager-modal">
@@ -1854,7 +1728,7 @@ const WorkOrganizer = () => {
                 </div>
               )}
               
-              {/* 导出导入操作 */}
+              {/* 数据操作 */}
               <div className="data-operations">
                 <h4 className="section-title">
                   <Icons.Lock />
@@ -1880,6 +1754,30 @@ const WorkOrganizer = () => {
                       style={{ display: 'none' }}
                     />
                   </label>
+                </div>
+                
+                {/* 数据清理功能 */}
+                <div className="cleanup-section">
+                  <h5 className="cleanup-title">数据维护</h5>
+                  <div className="cleanup-buttons">
+                    <button
+                      onClick={cleanupPomodoroHistory}
+                      className="cleanup-btn warning"
+                    >
+                      <Icons.Settings />
+                      清理重复数据
+                    </button>
+                    <button
+                      onClick={resetPomodoroHistory}
+                      className="cleanup-btn danger"
+                    >
+                      <Icons.Trash />
+                      重置番茄钟历史
+                    </button>
+                  </div>
+                  <p className="cleanup-desc">
+                    如果发现番茄钟计数异常，可以使用清理功能移除重复数据，或完全重置历史记录。
+                  </p>
                 </div>
                 
                 {/* 状态提示 */}
@@ -2046,7 +1944,7 @@ const WorkOrganizer = () => {
                 </button>
               </div>
               <div className="tip-text">
-                🛡️ 数据加密存储 | 🧠 支持DeepSeek AI智能分析 | 
+                🛡️ 数据加密存储 | 🧠 支持DeepSeek/OpenAI AI智能分析 | 
                 <button 
                   onClick={() => setShowAISettings(true)}
                   className="inline-settings-btn"
@@ -2126,219 +2024,199 @@ const WorkOrganizer = () => {
                             </div>
                           )}
 
-                          <div className="task-text-container">
+                          <div className="task-text">
                             {editingId === task.id ? (
-                              <input
-                                type="text"
-                                value={editingText}
-                                onChange={(e) => setEditingText(e.target.value)}
-                                onKeyPress={(e) => e.key === 'Enter' && saveEdit()}
-                                onBlur={saveEdit}
-                                className="task-edit-input"
-                                autoFocus
-                              />
+                              <div className="edit-task">
+                                <input
+                                  type="text"
+                                  value={editingText}
+                                  onChange={(e) => setEditingText(e.target.value)}
+                                  onKeyPress={(e) => e.key === 'Enter' && saveEdit()}
+                                  className="edit-input"
+                                  autoFocus
+                                />
+                                <button onClick={saveEdit} className="save-edit-btn">
+                                  <Icons.Check />
+                                </button>
+                              </div>
                             ) : (
-                              <span
-                                className={`task-text ${task.completed ? 'completed-text' : ''}`}
-                                onClick={() => startEdit(task.id, task.text)}
-                              >
-                                {task.text}
-                              </span>
+                              <span>{task.text}</span>
                             )}
                           </div>
                         </div>
 
                         <div className="task-actions">
-                          {/* 直接开始番茄钟 */}
-                          {task.estimatedDuration && !task.completed && (
+                          {task.estimatedDuration && (
                             <button
-                              onClick={() => pomodoroHook.startPomodoro(task.id, null, task.estimatedDuration, task.text, task.text)}
-                              disabled={pomodoroHook.activePomodoroId === task.id}
-                              className={`action-btn pomodoro-btn ${pomodoroHook.activePomodoroId === task.id ? 'active' : ''}`}
-                              title="开始番茄钟"
+                              onClick={() => pomodoroHook.startPomodoro(
+                                task.id, null, task.estimatedDuration, task.text
+                              )}
+                              disabled={pomodoroHook.pomodoroStatus === 'running'}
+                              className="pomodoro-start-btn"
                             >
                               <Icons.Play />
+                              开始
                             </button>
                           )}
 
-                          {/* AI分析按钮 */}
-                          {!task.aiAnalysis ? (
-                            <button
-                              onClick={() => analyzeTask(task.id, task.text, task.estimatedDuration)}
-                              disabled={analyzingTasks.has(task.id)}
-                              className="action-btn ai-btn"
-                              title="AI智能分析"
-                            >
-                              {analyzingTasks.has(task.id) ? (
-                                <span className="spinner">🔄</span>
-                              ) : (
-                                <Icons.Brain />
-                              )}
-                            </button>
-                          ) : (
-                            <>
-                              <button
-                                onClick={() => toggleAnalysisExpanded(task.id)}
-                                className="action-btn ai-btn"
-                                title="查看AI分析"
-                              >
-                                {expandedAnalysis.has(task.id) ? (
-                                  <Icons.ChevronDown />
-                                ) : (
-                                  <Icons.ChevronRight />
-                                )}
-                              </button>
-                              <button
-                                onClick={() => reAnalyzeTask(task.id)}
-                                className="action-btn ai-btn"
-                                title="重新分析"
-                                style={{ fontSize: '0.75rem' }}
-                              >
-                                🔄
-                              </button>
-                            </>
-                          )}
+                          <button
+                            onClick={() => analyzeTask(task.id, task.text, task.estimatedDuration)}
+                            disabled={analyzingTasks.has(task.id)}
+                            className="analyze-btn"
+                            title="AI智能分析任务"
+                          >
+                            <Icons.Brain />
+                            {analyzingTasks.has(task.id) ? '分析中...' : 'AI分析'}
+                          </button>
 
                           <button
                             onClick={() => startEdit(task.id, task.text)}
-                            className="action-btn edit-btn"
+                            className="edit-btn"
                           >
                             <Icons.Edit />
                           </button>
+
                           <button
                             onClick={() => deleteTask(task.id)}
-                            className="action-btn delete-btn"
+                            className="delete-btn"
                           >
                             <Icons.Trash />
                           </button>
                         </div>
                       </div>
 
-                      {/* AI优化任务分解结果 */}
-                      {task.aiAnalysis && expandedAnalysis.has(task.id) && (
-                        <div className="analysis-section">
+                      {/* AI分析结果 */}
+                      {task.aiAnalysis && (
+                        <div className="ai-analysis">
                           <div className="analysis-header">
-                            <h4 className="analysis-title">
-                              <Icons.Brain />
-                              AI智能分解 - {getTaskTypeLabel(task.aiAnalysis.taskType)}
-                              <span className="analysis-duration">
-                                (总计: {formatDuration(task.aiAnalysis.totalDuration)})
+                            <button
+                              onClick={() => toggleAnalysisExpanded(task.id)}
+                              className="analysis-toggle"
+                            >
+                              {expandedAnalysis.has(task.id) ? <Icons.ChevronDown /> : <Icons.ChevronRight />}
+                              <span className="task-type-badge">
+                                {task.aiAnalysis.taskTypeLabel}
                               </span>
-                            </h4>
-                            <p className="analysis-text">
-                              {task.aiAnalysis.analysis}
-                            </p>
+                            </button>
+                            <button
+                              onClick={() => reAnalyzeTask(task.id)}
+                              className="reanalyze-btn"
+                              title="重新分析"
+                            >
+                              <Icons.Brain />
+                              重新分析
+                            </button>
                           </div>
 
-                          <div className="analysis-content">
-                            {/* 优化的执行步骤 */}
-                            <div className="steps-section">
-                              <div className="steps-header">
-                                <h5 className="steps-title">
-                                  <Icons.Timer />
-                                  执行步骤
-                                </h5>
-                                {task.subtasks.length === 0 && (
+                          {expandedAnalysis.has(task.id) && (
+                            <div className="analysis-content">
+                              <div className="analysis-description">
+                                {task.aiAnalysis.analysis}
+                              </div>
+
+                              <div className="analysis-steps">
+                                <div className="steps-header">
+                                  <h4>执行步骤</h4>
                                   <button
                                     onClick={() => convertStepsToSubtasks(task.id)}
-                                    className="start-btn"
+                                    className="convert-steps-btn"
                                   >
-                                    开始执行
+                                    转为子任务
+                                  </button>
+                                </div>
+                                <div className="steps-list">
+                                  {task.aiAnalysis.steps.map((step, index) => (
+                                    <div key={index} className="step-item">
+                                      <span className="step-number">{step.order}</span>
+                                      <span className="step-text">{step.text}</span>
+                                      <span className="step-duration">
+                                        <Icons.Timer />
+                                        {step.duration}分钟
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+
+                              <div className="analysis-tips">
+                                <h4>
+                                  <Icons.Lightbulb />
+                                  执行建议
+                                </h4>
+                                <ul className="tips-list">
+                                  {task.aiAnalysis.tips.map((tip, index) => (
+                                    <li key={index}>{tip}</li>
+                                  ))}
+                                </ul>
+                              </div>
+
+                              <div className="analysis-meta">
+                                <span className="analysis-source">
+                                  {task.aiAnalysis.source === 'deepseek' && '🚀 DeepSeek AI分析'}
+                                  {task.aiAnalysis.source === 'openai' && '⭐ OpenAI GPT分析'}
+                                  {task.aiAnalysis.source === 'local' && '🧠 本地AI分析'}
+                                </span>
+                                <span className="analysis-time">
+                                  {new Date(task.aiAnalysis.analyzedAt).toLocaleString()}
+                                </span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* 子任务列表 */}
+                      {task.subtasks && task.subtasks.length > 0 && (
+                        <div className="subtasks">
+                          <div className="subtasks-header">
+                            <h4>子任务进度 ({task.subtasks.filter(s => s.completed).length}/{task.subtasks.length})</h4>
+                          </div>
+                          <div className="subtasks-list">
+                            {task.subtasks.map((subtask) => (
+                              <div
+                                key={subtask.id}
+                                className={`subtask-item ${subtask.completed ? 'completed' : ''}`}
+                              >
+                                <button
+                                  onClick={() => toggleSubtask(task.id, subtask.id)}
+                                  className={`subtask-checkbox ${subtask.completed ? 'checked' : ''}`}
+                                >
+                                  {subtask.completed && <Icons.Check />}
+                                </button>
+                                
+                                <div className="subtask-text">{subtask.text}</div>
+                                
+                                <div className="subtask-meta">
+                                  <span className="subtask-duration">
+                                    <Icons.Timer />
+                                    {subtask.duration}分钟
+                                  </span>
+                                  {subtask.startTime && (
+                                    <span className="subtask-time">
+                                      开始: {subtask.startTime}
+                                    </span>
+                                  )}
+                                  {subtask.endTime && (
+                                    <span className="subtask-time">
+                                      完成: {subtask.endTime}
+                                    </span>
+                                  )}
+                                </div>
+                                
+                                {!subtask.completed && (
+                                  <button
+                                    onClick={() => pomodoroHook.startPomodoro(
+                                      task.id, subtask.id, subtask.duration, task.text, subtask.text
+                                    )}
+                                    disabled={pomodoroHook.pomodoroStatus === 'running'}
+                                    className="subtask-start-btn"
+                                  >
+                                    <Icons.Play />
+                                    开始
                                   </button>
                                 )}
                               </div>
-                              
-                              {task.subtasks.length > 0 ? (
-                                <div className="subtasks-list">
-                                  {task.subtasks.map((subtask) => (
-                                    <div key={subtask.id} className="subtask-item">
-                                      <button
-                                        onClick={() => toggleSubtask(task.id, subtask.id)}
-                                        className={`subtask-checkbox ${subtask.completed ? 'checked' : ''}`}
-                                      >
-                                        {subtask.completed && <Icons.Check />}
-                                      </button>
-                                      <div className="subtask-content">
-                                        <div className={`subtask-text ${subtask.completed ? 'completed-text' : ''}`}>
-                                          步骤{subtask.order}: {subtask.text}
-                                        </div>
-                                        <div className="subtask-info">
-                                          <span className="subtask-duration">
-                                            🍅 {formatDuration(subtask.duration)}
-                                          </span>
-                                          {subtask.completed && subtask.endTime && (
-                                            <span className="subtask-time">
-                                              完成于 {subtask.endTime}
-                                            </span>
-                                          )}
-                                        </div>
-                                      </div>
-                                      {!subtask.completed && (
-                                        <button
-                                          onClick={() => pomodoroHook.startPomodoro(
-                                            task.id, 
-                                            subtask.id, 
-                                            subtask.duration, 
-                                            task.text, 
-                                            subtask.text
-                                          )}
-                                          disabled={pomodoroHook.activePomodoroId === subtask.id}
-                                          className={`subtask-play-btn ${pomodoroHook.activePomodoroId === subtask.id ? 'active' : ''}`}
-                                          title="开始这个步骤的番茄钟"
-                                        >
-                                          <Icons.Play />
-                                        </button>
-                                      )}
-                                    </div>
-                                  ))}
-                                  
-                                  {/* 进度条 */}
-                                  <div className="progress-section">
-                                    <div className="progress-info">
-                                      <span>总体进度</span>
-                                      <span>{Math.round((task.subtasks.filter(s => s.completed).length / task.subtasks.length) * 100)}%</span>
-                                    </div>
-                                    <div className="progress-bar">
-                                      <div 
-                                        className="progress-fill"
-                                        style={{
-                                          width: `${(task.subtasks.filter(s => s.completed).length / task.subtasks.length) * 100}%`
-                                        }}
-                                      ></div>
-                                    </div>
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="steps-preview">
-                                  {task.aiAnalysis.steps.map((step, index) => (
-                                    <div key={index} className="step-preview optimized-step">
-                                      <div className="step-text">
-                                        步骤{step.order}: {step.text}
-                                      </div>
-                                      <div className="step-duration">
-                                        🍅 {formatDuration(step.duration)}
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-
-                            {/* 优化建议 */}
-                            <div className="tips-section">
-                              <h5 className="tips-title">
-                                <Icons.Lightbulb />
-                                执行建议
-                              </h5>
-                              <ul className="tips-list">
-                                {task.aiAnalysis.tips.map((tip, index) => (
-                                  <li key={index} className="tip-item">
-                                    <span className="tip-icon">💡</span>
-                                    <span>{tip}</span>
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
+                            ))}
                           </div>
                         </div>
                       )}
@@ -2350,223 +2228,119 @@ const WorkOrganizer = () => {
           </div>
         </div>
 
-        {/* 增强的侧边栏 */}
+        {/* 右侧统计面板 */}
         <div className="sidebar">
-          <div className="sidebar-card">
-            {/* 今日目标 */}
-            <div className="sidebar-section">
-              <h3 className="sidebar-title">
-                <span className="sidebar-emoji">🎯</span>
-                今日目标
-              </h3>
-              
-              <div className="goal-section">
-                <div className="goal-progress">
-                  <div className="goal-numbers">
-                    <span className="goal-current">{pomodoroStats.totalSessions}</span>
-                    <span className="goal-separator">/</span>
-                    <span className="goal-target">{dailyGoal}</span>
-                  </div>
-                  <div className="goal-label">番茄钟</div>
-                </div>
-                
-                <div className="goal-progress-bar">
+          {/* 每日目标 */}
+          <div className="card daily-goal">
+            <h3>
+              <Icons.Target />
+              每日目标
+            </h3>
+            <div className="goal-progress">
+              <div className="goal-circle">
+                <div className="goal-number">{pomodoroStats.totalSessions}</div>
+                <div className="goal-target">/ {dailyGoal}</div>
+              </div>
+              <div className="goal-bar">
+                <div 
+                  className="goal-fill"
+                  style={{ width: `${Math.min((pomodoroStats.totalSessions / dailyGoal) * 100, 100)}%` }}
+                ></div>
+              </div>
+            </div>
+            <div className="goal-controls">
+              <button
+                onClick={() => setDailyGoal(Math.max(1, dailyGoal - 1))}
+                className="goal-btn"
+              >
+                -
+              </button>
+              <span>目标: {dailyGoal} 番茄</span>
+              <button
+                onClick={() => setDailyGoal(dailyGoal + 1)}
+                className="goal-btn"
+              >
+                +
+              </button>
+            </div>
+            <div className="efficiency-score">
+              <Icons.TrendingUp />
+              <span>今日效率: {getEfficiencyScore()}%</span>
+            </div>
+          </div>
+
+          {/* 本周统计 */}
+          <div className="card weekly-stats">
+            <h3>
+              <Icons.Calendar />
+              本周统计
+            </h3>
+            <div className="week-chart">
+              {weeklyStats.map((day, index) => (
+                <div key={index} className="day-bar">
                   <div 
-                    className="goal-progress-fill"
-                    style={{
-                      width: `${Math.min((pomodoroStats.totalSessions / dailyGoal) * 100, 100)}%`
-                    }}
+                    className="bar-fill"
+                    style={{ height: `${Math.max(4, (day.count / Math.max(...weeklyStats.map(d => d.count), 1)) * 60)}px` }}
                   ></div>
+                  <div className="day-label">{day.day}</div>
+                  <div className="day-count">{day.count}</div>
                 </div>
-                
-                <div className="goal-controls">
-                  <button 
-                    onClick={() => setDailyGoal(Math.max(1, dailyGoal - 1))}
-                    className="goal-btn"
-                  >
-                    -
-                  </button>
-                  <span className="goal-text">调整目标</span>
-                  <button 
-                    onClick={() => setDailyGoal(dailyGoal + 1)}
-                    className="goal-btn"
-                  >
-                    +
-                  </button>
-                </div>
+              ))}
+            </div>
+            <div className="week-summary">
+              <div className="summary-item">
+                <span>本周总计</span>
+                <span>{weeklyStats.reduce((sum, day) => sum + day.count, 0)} 番茄</span>
+              </div>
+              <div className="summary-item">
+                <span>专注时长</span>
+                <span>{Math.round(weeklyStats.reduce((sum, day) => sum + day.time, 0) / 60)}h</span>
               </div>
             </div>
+          </div>
 
-            {/* 效率分析 */}
-            <div className="sidebar-section">
-              <h3 className="sidebar-title">
-                <span className="sidebar-emoji">📊</span>
-                效率分析
-              </h3>
-              
-              <div className="efficiency-grid">
-                <div className="efficiency-item">
-                  <div className="efficiency-number">{getEfficiencyScore()}%</div>
-                  <div className="efficiency-label">完成度</div>
+          {/* 成就系统 */}
+          <div className="card achievements">
+            <h3>
+              <Icons.Award />
+              成就徽章
+            </h3>
+            <div className="achievements-grid">
+              {achievements.map((achievement) => (
+                <div key={achievement.id} className="achievement-item">
+                  <div className="achievement-icon">{achievement.icon}</div>
+                  <div className="achievement-name">{achievement.name}</div>
                 </div>
-                <div className="efficiency-item">
-                  <div className="efficiency-number">{formatDuration(pomodoroStats.totalTime)}</div>
-                  <div className="efficiency-label">专注时间</div>
+              ))}
+              {achievements.length === 0 && (
+                <div className="no-achievements">
+                  <Icons.Star />
+                  <span>完成更多番茄钟解锁成就！</span>
                 </div>
-                <div className="efficiency-item">
-                  <div className="efficiency-number">{focusStreak}</div>
-                  <div className="efficiency-label">连续天数</div>
-                </div>
-                <div className="efficiency-item">
-                  <div className="efficiency-number">{appStats.daysUsed}</div>
-                  <div className="efficiency-label">使用天数</div>
+              )}
+            </div>
+          </div>
+
+          {/* 专注状态 */}
+          <div className="card focus-status">
+            <h3>
+              <Icons.Zap />
+              专注状态
+            </h3>
+            <div className="focus-metrics">
+              <div className="metric-item">
+                <div className="metric-label">连续专注</div>
+                <div className="metric-value">{focusStreak} 天</div>
+              </div>
+              <div className="metric-item">
+                <div className="metric-label">总专注时长</div>
+                <div className="metric-value">
+                  {Math.round(pomodoroHistory.reduce((sum, p) => sum + p.duration, 0) / 60)}h
                 </div>
               </div>
-            </div>
-
-            {/* 周趋势 */}
-            <div className="sidebar-section">
-              <h3 className="sidebar-title">
-                <span className="sidebar-emoji">📈</span>
-                一周趋势
-              </h3>
-              
-              <div className="week-chart">
-                {weeklyStats.map((day, index) => (
-                  <div key={index} className="week-day">
-                    <div className="week-bar-container">
-                      <div 
-                        className="week-bar"
-                        style={{
-                          height: `${Math.max((day.count / Math.max(...weeklyStats.map(d => d.count), 1)) * 60, 4)}px`
-                        }}
-                      ></div>
-                    </div>
-                    <div className="week-count">{day.count}</div>
-                    <div className="week-label">{day.day}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* 成就系统 */}
-            <div className="sidebar-section">
-              <h3 className="sidebar-title">
-                <span className="sidebar-emoji">🏆</span>
-                成就徽章
-              </h3>
-              
-              <div className="achievements-grid">
-                {achievements.length > 0 ? (
-                  achievements.slice(0, 6).map((achievement) => (
-                    <div key={achievement.id} className="achievement-item">
-                      <span className="achievement-icon">{achievement.icon}</span>
-                      <span className="achievement-name">{achievement.name}</span>
-                    </div>
-                  ))
-                ) : (
-                  <div className="achievement-empty">
-                    <span>🌟</span>
-                    <p>完成首个番茄钟解锁成就</p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* 数据安全管理 */}
-            <div className="sidebar-section">
-              <h3 className="sidebar-title">
-                <span className="sidebar-emoji">🛡️</span>
-                数据安全
-              </h3>
-              
-              <div className="security-status">
-                {storageStats && (
-                  <div className="security-stats">
-                    <div className="security-item">
-                      <span className="security-label">加密状态</span>
-                      <span className="security-value secure">🔐 已加密</span>
-                    </div>
-                    <div className="security-item">
-                      <span className="security-label">数据大小</span>
-                      <span className="security-value">{storageStats.formattedSize}</span>
-                    </div>
-                    <div className="security-item">
-                      <span className="security-label">用户ID</span>
-                      <span className="security-value">{storageStats.userId.slice(0, 8)}...</span>
-                    </div>
-                  </div>
-                )}
-                
-                <div className="security-actions">
-                  <button
-                    onClick={() => setShowDataManager(true)}
-                    className="security-btn primary"
-                  >
-                    <Icons.Settings />
-                    管理数据
-                  </button>
-                  <button
-                    onClick={handleExportData}
-                    className="security-btn secondary"
-                  >
-                    <Icons.Download />
-                    导出备份
-                  </button>
-                </div>
-                
-                {importExportStatus && (
-                  <div className={`security-status-message ${importExportStatus.type}`}>
-                    {importExportStatus.type === 'success' ? '✅' : '⚠️'} {importExportStatus.message}
-                  </div>
-                )}
-              </div>
-              
-              <div className="security-tips">
-                <p className="security-tip-text">
-                  💡 数据已加密存储，支持跨设备备份恢复
-                </p>
-              </div>
-            </div>
-
-            {/* 使用提示 */}
-            <div className="sidebar-section">
-              <h4 className="sidebar-tips-title">💡 使用提示</h4>
-              <ul className="sidebar-tips-list">
-                <li>• AI能识别学习、编程、写作等10种任务类型</li>
-                <li>• 点击🧠获得针对性的步骤分解</li>
-                <li>• 每种任务类型都有专门的执行策略</li>
-                <li>• 点击▶️开始对应时长番茄钟</li>
-                <li>• 保持连续专注获得成就徽章</li>
-              </ul>
-            </div>
-
-            {/* 番茄钟历史 */}
-            <div className="sidebar-section">
-              <h4 className="sidebar-history-title">最近完成</h4>
-              <div className="sidebar-history-list">
-                {pomodoroHistory.slice(0, 5).map((record) => (
-                  <div key={record.id} className="history-item">
-                    <div className="history-task">
-                      {record.subtaskName}
-                    </div>
-                    <div className="history-info">
-                      <span className="history-duration">
-                        🍅 {formatDuration(record.duration)}
-                      </span>
-                      <span className="history-time">
-                        {new Date(record.completedAt).toLocaleTimeString().slice(0, 5)}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-                {pomodoroHistory.length === 0 && (
-                  <div className="history-empty">
-                    <Icons.Timer />
-                    <p>还没有完成的番茄钟</p>
-                    <p className="history-empty-sub">开始你的第一个专注时间吧！</p>
-                  </div>
-                )}
+              <div className="metric-item">
+                <div className="metric-label">平均效率</div>
+                <div className="metric-value">高效</div>
               </div>
             </div>
           </div>
