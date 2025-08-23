@@ -168,7 +168,7 @@ body {
 }
 
 .header-btn {
-  padding: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
   background: rgba(255, 255, 255, 0.15);
   border: none;
   border-radius: var(--radius-md);
@@ -176,6 +176,9 @@ body {
   cursor: pointer;
   transition: all var(--transition-normal);
   backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
 }
 
 .header-btn:hover {
@@ -185,6 +188,31 @@ body {
 
 .header-btn:active {
   transform: translateY(0);
+}
+
+/* 数据管理按钮特殊样式 */
+.data-manager-btn {
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  padding: var(--spacing-sm) var(--spacing-lg);
+  font-weight: 600;
+  animation: glow 2s infinite alternate;
+}
+
+.data-manager-btn:hover {
+  background: rgba(255, 255, 255, 0.35);
+  border-color: rgba(255, 255, 255, 0.5);
+  box-shadow: 0 4px 12px rgba(255, 255, 255, 0.2);
+}
+
+@keyframes glow {
+  0% { box-shadow: 0 0 5px rgba(255, 255, 255, 0.3); }
+  100% { box-shadow: 0 0 15px rgba(255, 255, 255, 0.5); }
+}
+
+.btn-text {
+  font-size: 0.875rem;
+  font-weight: inherit;
 }
 
 .main-title {
@@ -1392,7 +1420,137 @@ body {
   font-weight: 500;
 }
 
-/* 使用提示和历史记录 */
+/* 数据安全管理区域 */
+.security-status {
+  background: linear-gradient(135deg, #F0F9FF 0%, #E0F2FE 100%);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-lg);
+  border: 1px solid #BAE6FD;
+  margin-bottom: var(--spacing-md);
+}
+
+.security-stats {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-lg);
+}
+
+.security-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-xs) 0;
+}
+
+.security-label {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+.security-value {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  font-family: var(--font-family-mono);
+}
+
+.security-value.secure {
+  color: var(--color-success);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  background: var(--priority-low-bg);
+  padding: 0.125rem var(--spacing-sm);
+  border-radius: var(--radius-sm);
+}
+
+.security-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-md);
+}
+
+.security-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md);
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-normal);
+  text-transform: none;
+}
+
+.security-btn.primary {
+  background: var(--gradient-primary);
+  color: white;
+  box-shadow: var(--shadow-sm);
+}
+
+.security-btn.primary:hover {
+  background: var(--color-primary-dark);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.security-btn.secondary {
+  background: var(--color-bg-primary);
+  color: var(--color-primary);
+  border: 1px solid var(--color-primary);
+}
+
+.security-btn.secondary:hover {
+  background: var(--color-primary);
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.security-status-message {
+  padding: var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-weight: 500;
+  animation: fadeIn 0.3s ease;
+}
+
+.security-status-message.success {
+  background: var(--priority-low-bg);
+  color: var(--priority-low);
+  border: 1px solid var(--priority-low-border);
+}
+
+.security-status-message.error {
+  background: var(--priority-high-bg);
+  color: var(--priority-high);
+  border: 1px solid var(--priority-high-border);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.security-tips {
+  text-align: center;
+}
+
+.security-tip-text {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  background: rgba(59, 130, 246, 0.1);
+  padding: var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--color-primary);
+  margin: 0;
+}
 .sidebar-tips-title,
 .sidebar-history-title {
   font-weight: 600;
