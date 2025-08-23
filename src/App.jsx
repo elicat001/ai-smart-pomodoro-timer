@@ -211,7 +211,39 @@ const DataManager = {
     }
   },
   
-  // 导入数据
+  // 清理重复的番茄钟数据
+  const cleanupPomodoroHistory = useCallback(() => {
+    setPomodoroHistory(prev => {
+      const cleanedHistory = [];
+      const seenRecords = new Set();
+      
+      for (const record of prev) {
+        // 创建唯一标识符
+        const recordKey = `${record.date}_${record.taskName}_${record.subtaskName}_${new Date(record.completedAt).getHours()}_${new Date(record.completedAt).getMinutes()}`;
+        
+        if (!seenRecords.has(recordKey)) {
+          seenRecords.add(recordKey);
+          cleanedHistory.push(record);
+        }
+      }
+      
+      console.log(`清理番茄钟数据：原有${prev.length}条，清理后${cleanedHistory.length}条`);
+      return cleanedHistory;
+    });
+  }, [setPomodoroHistory]);
+  
+  // 重置番茄钟数据
+  const resetPomodoroHistory = useCallback(() => {
+    if (window.confirm('确定要清空所有番茄钟历史记录吗？此操作不可恢复！')) {
+      setPomodoroHistory([]);
+      console.log('番茄钟历史记录已重置');
+      setImportExportStatus({
+        type: 'success',
+        message: '番茄钟历史记录已重置'
+      });
+      setTimeout(() => setImportExportStatus(null), 3000);
+    }
+  }, [setPomodoroHistory]);
   importData: (encryptedData) => {
     try {
       const userId = generateUserIdHash();
@@ -888,26 +920,56 @@ const WorkOrganizer = () => {
     );
   }, [tasks]);
 
+  // 在任务完成时添加反馈动画和提示
+  const handleTaskAutoComplete = useCallback((taskId, taskText) => {
+    // 显示任务自动完成的提示
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification('任务自动完成！', {
+        body: `恭喜完成任务：${taskText}`,
+        icon: '/favicon.ico'
+      });
+    }
+    
+    console.log(`任务自动完成: ${taskText}`);
+  }, []);
+
   const toggleSubtask = useCallback((taskId, subtaskId) => {
     setTasks(prevTasks => 
-      prevTasks.map(task => 
-        task.id === taskId 
-          ? {
-              ...task,
-              subtasks: task.subtasks.map(sub =>
-                sub.id === subtaskId 
-                  ? { 
-                      ...sub, 
-                      completed: !sub.completed,
-                      endTime: !sub.completed ? new Date().toLocaleTimeString() : null
-                    }
-                  : sub
-              )
-            }
-          : task
-      )
+      prevTasks.map(task => {
+        if (task.id === taskId) {
+          const updatedSubtasks = task.subtasks.map(sub =>
+            sub.id === subtaskId 
+              ? { 
+                  ...sub, 
+                  completed: !sub.completed,
+                  endTime: !sub.completed ? new Date().toLocaleTimeString() : null
+                }
+              : sub
+          );
+          
+          // 检查所有子任务是否都完成了
+          const allSubtasksCompleted = updatedSubtasks.length > 0 && updatedSubtasks.every(sub => sub.completed);
+          const wasIncomplete = !task.completed;
+          
+          // 如果任务原来未完成，且现在所有子任务都完成了，则自动完成主任务
+          if (wasIncomplete && allSubtasksCompleted) {
+            // 延迟显示完成提示，让用户看到进度变化
+            setTimeout(() => {
+              handleTaskAutoComplete(taskId, task.text);
+            }, 500);
+          }
+          
+          return {
+            ...task,
+            subtasks: updatedSubtasks,
+            // 如果所有子任务都完成，自动完成主任务；如果有子任务未完成，则取消主任务完成状态
+            completed: allSubtasksCompleted
+          };
+        }
+        return task;
+      })
     );
-  }, [setTasks]);
+  }, [setTasks, handleTaskAutoComplete]);
 
   const toggleAnalysisExpanded = useCallback((taskId) => {
     setExpandedAnalysis(prev => {
@@ -1010,25 +1072,52 @@ const WorkOrganizer = () => {
     setStorageStats(stats);
   }, []);
 
+  // 防止重复处理的标记
+  const processedPomodoroRef = useRef(new Set());
+
   // 完成番茄钟会话的处理
-  const handlePomodoroComplete = useCallback((activeTask, activeSubtask, duration) => {
+  const handlePomodoroComplete = useCallback((activeTask, activeSubtask, duration, pomodoroId) => {
+    // 防止重复处理同一个番茄钟
+    const completionKey = `${pomodoroId}_${Date.now()}`;
+    if (processedPomodoroRef.current.has(completionKey)) {
+      console.log('防止重复处理番茄钟完成事件:', completionKey);
+      return;
+    }
+    processedPomodoroRef.current.add(completionKey);
+
     const taskName = activeTask.text;
     const subtaskName = activeSubtask ? activeSubtask.text : taskName;
 
     const pomodoroRecord = {
-      id: Date.now(),
+      id: `pomodoro_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       taskName,
       subtaskName,
-      duration,
+      duration: duration || 25,
       completedAt: new Date().toISOString(),
       date: new Date().toDateString(),
       efficiency: 'high'
     };
 
-    setPomodoroHistory(prev => [pomodoroRecord, ...prev]);
+    console.log('添加番茄钟记录:', pomodoroRecord);
+
+    setPomodoroHistory(prev => {
+      // 检查是否已存在相同的记录（基于时间戳和任务名）
+      const isDuplicate = prev.some(record => 
+        Math.abs(new Date(record.completedAt).getTime() - new Date(pomodoroRecord.completedAt).getTime()) < 5000 &&
+        record.taskName === pomodoroRecord.taskName &&
+        record.subtaskName === pomodoroRecord.subtaskName
+      );
+      
+      if (isDuplicate) {
+        console.log('发现重复记录，跳过添加');
+        return prev;
+      }
+      
+      return [pomodoroRecord, ...prev];
+    });
 
     if (activeSubtask) {
-      toggleSubtask(activeTask.id, pomodoroHook.activePomodoroId);
+      toggleSubtask(activeTask.id, pomodoroId);
     }
 
     // 通知处理
@@ -1038,11 +1127,20 @@ const WorkOrganizer = () => {
         icon: '/favicon.ico'
       });
     }
-  }, [setPomodoroHistory, toggleSubtask, pomodoroHook.activePomodoroId]);
+
+    // 清理旧的处理记录（保留最近10个）
+    setTimeout(() => {
+      const keys = Array.from(processedPomodoroRef.current);
+      if (keys.length > 10) {
+        keys.slice(0, -10).forEach(key => processedPomodoroRef.current.delete(key));
+      }
+    }, 10000);
+
+  }, [setPomodoroHistory, toggleSubtask]);
 
   // 修改完成番茄钟的逻辑
   useEffect(() => {
-    if (pomodoroHook.pomodoroStatus === 'completed') {
+    if (pomodoroHook.pomodoroStatus === 'completed' && pomodoroHook.activePomodoroId) {
       const activeTask = tasks.find(t => 
         t.id === pomodoroHook.activePomodoroId || 
         t.subtasks.some(s => s.id === pomodoroHook.activePomodoroId)
@@ -1051,7 +1149,7 @@ const WorkOrganizer = () => {
       if (activeTask) {
         const activeSubtask = activeTask.subtasks.find(s => s.id === pomodoroHook.activePomodoroId);
         const duration = activeSubtask ? activeSubtask.duration : activeTask.estimatedDuration;
-        handlePomodoroComplete(activeTask, activeSubtask, duration);
+        handlePomodoroComplete(activeTask, activeSubtask, duration, pomodoroHook.activePomodoroId);
       }
     }
   }, [pomodoroHook.pomodoroStatus, pomodoroHook.activePomodoroId, tasks, handlePomodoroComplete]);
@@ -1370,10 +1468,11 @@ const WorkOrganizer = () => {
               <div className="header-actions">
                 <button
                   onClick={() => setShowDataManager(true)}
-                  className="header-btn"
-                  title="数据管理"
+                  className="header-btn data-manager-btn"
+                  title="加密数据管理"
                 >
                   <Icons.Shield />
+                  <span className="btn-text">数据管理</span>
                 </button>
               </div>
 
@@ -1915,16 +2014,60 @@ const WorkOrganizer = () => {
               </div>
             </div>
 
-            {/* 数据安全信息 */}
+            {/* 数据安全管理 */}
             <div className="sidebar-section">
-              <h4 className="sidebar-tips-title">🛡️ 数据安全</h4>
-              <ul className="sidebar-tips-list">
-                <li>• 数据基于用户ID哈希加密存储</li>
-                <li>• 支持导出/导入加密数据包</li>
-                <li>• 本地存储，不依赖网络服务</li>
-                <li>• 定期备份确保数据安全</li>
-                <li>• 隐私保护，仅限本设备访问</li>
-              </ul>
+              <h3 className="sidebar-title">
+                <span className="sidebar-emoji">🛡️</span>
+                数据安全
+              </h3>
+              
+              <div className="security-status">
+                {storageStats && (
+                  <div className="security-stats">
+                    <div className="security-item">
+                      <span className="security-label">加密状态</span>
+                      <span className="security-value secure">🔐 已加密</span>
+                    </div>
+                    <div className="security-item">
+                      <span className="security-label">数据大小</span>
+                      <span className="security-value">{storageStats.formattedSize}</span>
+                    </div>
+                    <div className="security-item">
+                      <span className="security-label">用户ID</span>
+                      <span className="security-value">{storageStats.userId.slice(0, 8)}...</span>
+                    </div>
+                  </div>
+                )}
+                
+                <div className="security-actions">
+                  <button
+                    onClick={() => setShowDataManager(true)}
+                    className="security-btn primary"
+                  >
+                    <Icons.Settings />
+                    管理数据
+                  </button>
+                  <button
+                    onClick={handleExportData}
+                    className="security-btn secondary"
+                  >
+                    <Icons.Download />
+                    导出备份
+                  </button>
+                </div>
+                
+                {importExportStatus && (
+                  <div className={`security-status-message ${importExportStatus.type}`}>
+                    {importExportStatus.type === 'success' ? '✅' : '⚠️'} {importExportStatus.message}
+                  </div>
+                )}
+              </div>
+              
+              <div className="security-tips">
+                <p className="security-tip-text">
+                  💡 数据已加密存储，支持跨设备备份恢复
+                </p>
+              </div>
             </div>
 
             {/* 使用提示 */}
