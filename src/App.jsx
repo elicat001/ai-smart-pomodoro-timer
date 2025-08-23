@@ -717,7 +717,212 @@ const WorkOrganizer = () => {
     }
   }, []);
 
-  // 改进的AI分析功能 - 修复状态更新bug
+  // AI设置状态
+  const [showAISettings, setShowAISettings] = useState(false);
+  const [aiConfig, setAiConfig] = useLocalStorage('aiConfig', {
+    provider: 'local', // 'local' | 'deepseek' | 'openai'
+    apiKey: '',
+    model: 'deepseek-chat', // DeepSeek: 'deepseek-chat' | 'deepseek-reasoner', OpenAI: 'gpt-4' | 'gpt-3.5-turbo'
+    enabled: true
+  });
+
+  // OpenAI API调用
+  const callOpenAIAPI = useCallback(async (taskText, duration) => {
+    if (!aiConfig.apiKey) {
+      throw new Error('请先配置OpenAI API Key');
+    }
+
+    const prompt = `你是一个专业的任务分解专家。请分析以下任务并提供执行方案：
+
+任务内容：${taskText}
+预计时长：${duration}分钟
+
+请按照以下JSON格式返回分析结果（只返回JSON，不要包含其他文字）：
+{
+  "taskType": "任务类型(learning/coding/writing/meeting/analysis/design/practice/creative/review/planning/testing/general)",
+  "description": "简短的执行策略描述",
+  "steps": [
+    {
+      "text": "步骤描述",
+      "duration": 预计分钟数,
+      "order": 步骤序号
+    }
+  ],
+  "tips": [
+    "执行建议1",
+    "执行建议2",
+    "执行建议3"
+  ]
+}
+
+要求：
+1. steps数组应包含3-5个具体的执行步骤
+2. 每个步骤的duration总和应该等于${duration}
+3. 步骤要实用、可操作
+4. tips要针对具体任务类型给出专业建议`;
+
+    try {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${aiConfig.apiKey}`
+        },
+        body: JSON.stringify({
+          model: aiConfig.model,
+          messages: [
+            {
+              role: 'system',
+              content: '你是一个专业的任务分解和时间管理专家，擅长将复杂任务分解为具体可执行的步骤。'
+            },
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          max_tokens: 2000,
+          temperature: 0.7
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(`API请求失败: ${response.status} ${errorData.error?.message || response.statusText}`);
+      }
+
+      const data = await response.json();
+      const content = data.choices[0]?.message?.content;
+
+      if (!content) {
+        throw new Error('API返回数据格式错误');
+      }
+
+      // 尝试解析JSON响应
+      let jsonStr = content.trim();
+      
+      // 移除可能的markdown代码块标记
+      jsonStr = jsonStr.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+      
+      // 查找JSON对象
+      const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        jsonStr = jsonMatch[0];
+      }
+
+      const aiResult = JSON.parse(jsonStr);
+      
+      // 验证响应格式
+      if (!aiResult.taskType || !aiResult.steps || !Array.isArray(aiResult.steps)) {
+        throw new Error('AI返回的数据格式不正确');
+      }
+
+      return aiResult;
+      
+    } catch (error) {
+      console.error('OpenAI API调用失败:', error);
+      throw error;
+    }
+  }, [aiConfig.apiKey, aiConfig.model]);
+
+  // DeepSeek API调用
+  const callDeepSeekAPI = useCallback(async (taskText, duration) => {
+    if (!aiConfig.apiKey) {
+      throw new Error('请先配置DeepSeek API Key');
+    }
+
+    const prompt = `你是一个专业的任务分解专家。请分析以下任务并提供执行方案：
+
+任务内容：${taskText}
+预计时长：${duration}分钟
+
+请按照以下JSON格式返回分析结果（只返回JSON，不要包含其他文字）：
+{
+  "taskType": "任务类型(learning/coding/writing/meeting/analysis/design/practice/creative/review/planning/testing/general)",
+  "description": "简短的执行策略描述",
+  "steps": [
+    {
+      "text": "步骤描述",
+      "duration": 预计分钟数,
+      "order": 步骤序号
+    }
+  ],
+  "tips": [
+    "执行建议1",
+    "执行建议2",
+    "执行建议3"
+  ]
+}
+
+要求：
+1. steps数组应包含3-5个具体的执行步骤
+2. 每个步骤的duration总和应该等于${duration}
+3. 步骤要实用、可操作
+4. tips要针对具体任务类型给出专业建议`;
+
+    try {
+      const response = await fetch('https://api.deepseek.com/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${aiConfig.apiKey}`
+        },
+        body: JSON.stringify({
+          model: aiConfig.model,
+          messages: [
+            {
+              role: 'system',
+              content: '你是一个专业的任务分解和时间管理专家，擅长将复杂任务分解为具体可执行的步骤。'
+            },
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          max_tokens: 2000,
+          temperature: 0.7
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(`API请求失败: ${response.status} ${errorData.error?.message || response.statusText}`);
+      }
+
+      const data = await response.json();
+      const content = data.choices[0]?.message?.content;
+
+      if (!content) {
+        throw new Error('API返回数据格式错误');
+      }
+
+      // 尝试解析JSON响应
+      let jsonStr = content.trim();
+      
+      // 移除可能的markdown代码块标记
+      jsonStr = jsonStr.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+      
+      // 查找JSON对象
+      const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        jsonStr = jsonMatch[0];
+      }
+
+      const aiResult = JSON.parse(jsonStr);
+      
+      // 验证响应格式
+      if (!aiResult.taskType || !aiResult.steps || !Array.isArray(aiResult.steps)) {
+        throw new Error('AI返回的数据格式不正确');
+      }
+
+      return aiResult;
+      
+    } catch (error) {
+      console.error('DeepSeek API调用失败:', error);
+      throw error;
+    }
+  }, [aiConfig.apiKey, aiConfig.model]);
+
+        // 改进的AI分析功能
   const analyzeTask = useCallback(async (taskId, taskText, duration = 60) => {
     // 参数验证和类型转换
     if (!taskId || !taskText || typeof taskText !== 'string') {
@@ -740,26 +945,74 @@ const WorkOrganizer = () => {
     setAnalyzingTasks(prev => new Set([...prev, taskId]));
     
     try {
-      // 模拟分析延迟
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      let analysis;
       
-      const taskType = identifyTaskType(taskText);
-      const strategy = generateTaskStrategy(taskType, taskText, finalDuration);
-      
-      const analysis = {
-        taskType,
-        taskTypeLabel: getTaskTypeLabel(taskType),
-        analysis: `基于任务特点"${taskText}"，识别为${getTaskTypeLabel(taskType)}类型。${strategy.description}`,
-        totalDuration: finalDuration,
-        steps: strategy.steps.map((step, index) => ({
-          ...step,
-          order: index + 1,
-          id: `${taskId}-step-${index}`,
-          completed: false
-        })),
-        tips: strategy.tips,
-        analyzedAt: Date.now()
-      };
+      if (aiConfig.provider === 'deepseek' && aiConfig.enabled && aiConfig.apiKey) {
+        // 使用DeepSeek API
+        console.log('使用DeepSeek API进行任务分析');
+        const aiResult = await callDeepSeekAPI(taskText, finalDuration);
+        
+        analysis = {
+          taskType: aiResult.taskType,
+          taskTypeLabel: getTaskTypeLabel(aiResult.taskType),
+          analysis: aiResult.description || `基于任务特点"${taskText}"，识别为${getTaskTypeLabel(aiResult.taskType)}类型。${aiResult.description}`,
+          totalDuration: finalDuration,
+          steps: aiResult.steps.map((step, index) => ({
+            text: step.text,
+            duration: step.duration || Math.round(finalDuration / aiResult.steps.length),
+            order: step.order || (index + 1),
+            id: `${taskId}-step-${index}`,
+            completed: false
+          })),
+          tips: aiResult.tips || ['专注核心目标', '及时调整方法', '记录关键成果'],
+          analyzedAt: Date.now(),
+          source: 'deepseek'
+        };
+      } else if (aiConfig.provider === 'openai' && aiConfig.enabled && aiConfig.apiKey) {
+        // 使用OpenAI API
+        console.log('使用OpenAI API进行任务分析');
+        const aiResult = await callOpenAIAPI(taskText, finalDuration);
+        
+        analysis = {
+          taskType: aiResult.taskType,
+          taskTypeLabel: getTaskTypeLabel(aiResult.taskType),
+          analysis: aiResult.description || `基于任务特点"${taskText}"，识别为${getTaskTypeLabel(aiResult.taskType)}类型。${aiResult.description}`,
+          totalDuration: finalDuration,
+          steps: aiResult.steps.map((step, index) => ({
+            text: step.text,
+            duration: step.duration || Math.round(finalDuration / aiResult.steps.length),
+            order: step.order || (index + 1),
+            id: `${taskId}-step-${index}`,
+            completed: false
+          })),
+          tips: aiResult.tips || ['专注核心目标', '及时调整方法', '记录关键成果'],
+          analyzedAt: Date.now(),
+          source: 'openai'
+        };
+      } else {
+        // 使用本地分析（原有逻辑）
+        console.log('使用本地AI进行任务分析');
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        
+        const taskType = identifyTaskType(taskText);
+        const strategy = generateTaskStrategy(taskType, taskText, finalDuration);
+        
+        analysis = {
+          taskType,
+          taskTypeLabel: getTaskTypeLabel(taskType),
+          analysis: `基于任务特点"${taskText}"，识别为${getTaskTypeLabel(taskType)}类型。${strategy.description}`,
+          totalDuration: finalDuration,
+          steps: strategy.steps.map((step, index) => ({
+            ...step,
+            order: index + 1,
+            id: `${taskId}-step-${index}`,
+            completed: false
+          })),
+          tips: strategy.tips,
+          analyzedAt: Date.now(),
+          source: 'local'
+        };
+      }
       
       // 使用更安全的map操作更新任务
       setTasks(prevTasks => {
@@ -777,12 +1030,12 @@ const WorkOrganizer = () => {
         const updatedTask = updatedTasks.find(t => t.id === taskId);
         if (!updatedTask) {
           console.error('任务更新失败，任务不存在:', taskId);
-          return prevTasks; // 返回原状态
+          return prevTasks;
         }
         
         if (!updatedTask.aiAnalysis) {
           console.error('AI分析添加失败:', taskId);
-          return prevTasks; // 返回原状态
+          return prevTasks;
         }
         
         return updatedTasks;
@@ -792,6 +1045,11 @@ const WorkOrganizer = () => {
       
     } catch (error) {
       console.error('AI分析失败:', error);
+      setImportExportStatus({
+        type: 'error',
+        message: `AI分析失败: ${error.message}`
+      });
+      setTimeout(() => setImportExportStatus(null), 5000);
     } finally {
       setAnalyzingTasks(prev => {
         const newSet = new Set(prev);
@@ -799,7 +1057,7 @@ const WorkOrganizer = () => {
         return newSet;
       });
     }
-  }, [identifyTaskType, getTaskTypeLabel, generateTaskStrategy]);
+  }, [aiConfig, callDeepSeekAPI, callOpenAIAPI, identifyTaskType, getTaskTypeLabel, generateTaskStrategy]);
 
   // 生成唯一任务ID
   const generateTaskId = useCallback(() => {
@@ -1359,7 +1617,202 @@ const WorkOrganizer = () => {
         </div>
       )}
 
-      {/* 数据管理弹窗 */}
+      {/* AI设置弹窗 */}
+      {showAISettings && (
+        <div className="modal-overlay">
+          <div className="modal-content ai-settings-modal">
+            <div className="modal-header">
+              <h3 className="modal-title">
+                <Icons.Brain />
+                AI分析设置
+              </h3>
+              <button
+                onClick={() => setShowAISettings(false)}
+                className="modal-close-btn"
+              >
+                <Icons.X />
+              </button>
+            </div>
+            
+            <div className="ai-settings-content">
+              {/* AI提供商选择 */}
+              <div className="setting-section">
+                <h4 className="setting-title">AI分析引擎</h4>
+                <div className="provider-options">
+                  <label className={`provider-option ${aiConfig.provider === 'local' ? 'active' : ''}`}>
+                    <input
+                      type="radio"
+                      name="provider"
+                      value="local"
+                      checked={aiConfig.provider === 'local'}
+                      onChange={(e) => setAiConfig(prev => ({ ...prev, provider: e.target.value }))}
+                    />
+                    <div className="provider-info">
+                      <div className="provider-name">
+                        <Icons.Brain />
+                        本地AI分析
+                      </div>
+                      <div className="provider-desc">基于规则的任务分解，免费使用</div>
+                    </div>
+                  </label>
+                  
+                  <label className={`provider-option ${aiConfig.provider === 'openai' ? 'active' : ''}`}>
+                    <input
+                      type="radio"
+                      name="provider"
+                      value="openai"
+                      checked={aiConfig.provider === 'openai'}
+                      onChange={(e) => setAiConfig(prev => ({ 
+                        ...prev, 
+                        provider: e.target.value,
+                        model: e.target.value === 'openai' ? 'gpt-4' : prev.model
+                      }))}
+                    />
+                    <div className="provider-info">
+                      <div className="provider-name">
+                        <Icons.Star />
+                        OpenAI GPT
+                      </div>
+                      <div className="provider-desc">强大的GPT模型，需要API Key</div>
+                    </div>
+                  </label>
+                  
+                  <label className={`provider-option ${aiConfig.provider === 'deepseek' ? 'active' : ''}`}>
+                    <input
+                      type="radio"
+                      name="provider"
+                      value="deepseek"
+                      checked={aiConfig.provider === 'deepseek'}
+                      onChange={(e) => setAiConfig(prev => ({ ...prev, provider: e.target.value }))}
+                    />
+                    <div className="provider-info">
+                      <div className="provider-name">
+                        <Icons.Zap />
+                        DeepSeek AI
+                      </div>
+                      <div className="provider-desc">智能任务分析，需要API Key</div>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              {/* AI提供商配置 */}
+              {(aiConfig.provider === 'deepseek' || aiConfig.provider === 'openai') && (
+                <div className="setting-section">
+                  <h4 className="setting-title">
+                    {aiConfig.provider === 'deepseek' ? 'DeepSeek配置' : 'OpenAI配置'}
+                  </h4>
+                  
+                  <div className="setting-field">
+                    <label className="field-label">API Key</label>
+                    <input
+                      type="password"
+                      value={aiConfig.apiKey}
+                      onChange={(e) => setAiConfig(prev => ({ ...prev, apiKey: e.target.value }))}
+                      placeholder={`请输入${aiConfig.provider === 'deepseek' ? 'DeepSeek' : 'OpenAI'} API Key`}
+                      className="field-input"
+                    />
+                    <div className="field-hint">
+                      在 <a 
+                        href={aiConfig.provider === 'deepseek' ? 
+                          'https://platform.deepseek.com/api-keys' : 
+                          'https://platform.openai.com/api-keys'} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                      >
+                        {aiConfig.provider === 'deepseek' ? 'DeepSeek开放平台' : 'OpenAI平台'}
+                      </a> 获取API Key
+                    </div>
+                  </div>
+                  
+                  <div className="setting-field">
+                    <label className="field-label">模型选择</label>
+                    <select
+                      value={aiConfig.model}
+                      onChange={(e) => setAiConfig(prev => ({ ...prev, model: e.target.value }))}
+                      className="field-select"
+                    >
+                      {aiConfig.provider === 'deepseek' ? (
+                        <>
+                          <option value="deepseek-chat">DeepSeek-V3 (推荐)</option>
+                          <option value="deepseek-reasoner">DeepSeek-R1 (深度思考)</option>
+                        </>
+                      ) : (
+                        <>
+                          <option value="gpt-4">GPT-4 (推荐)</option>
+                          <option value="gpt-4-turbo">GPT-4 Turbo</option>
+                          <option value="gpt-3.5-turbo">GPT-3.5 Turbo (经济)</option>
+                        </>
+                      )}
+                    </select>
+                    <div className="field-hint">
+                      {aiConfig.provider === 'deepseek' ? 
+                        'V3适合快速分析，R1提供更深入的思考过程' :
+                        'GPT-4效果最好，GPT-3.5更经济'
+                      }
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 功能开关 */}
+              <div className="setting-section">
+                <h4 className="setting-title">功能设置</h4>
+                <label className="toggle-setting">
+                  <input
+                    type="checkbox"
+                    checked={aiConfig.enabled}
+                    onChange={(e) => setAiConfig(prev => ({ ...prev, enabled: e.target.checked }))}
+                  />
+                  <span className="toggle-slider"></span>
+                  <span className="toggle-label">启用AI智能分析</span>
+                </label>
+              </div>
+
+              {/* 使用说明 */}
+              <div className="setting-section">
+                <h4 className="setting-title">使用说明</h4>
+                <div className="usage-info">
+                  <div className="usage-item">
+                    <Icons.Star />
+                    <span>DeepSeek API提供更智能的任务分解和个性化建议</span>
+                  </div>
+                  <div className="usage-item">
+                    <Icons.Lock />
+                    <span>API Key安全加密存储在本地，不会上传到服务器</span>
+                  </div>
+                  <div className="usage-item">
+                    <Icons.Zap />
+                    <span>每次分析大约消耗0.001-0.01元，成本极低</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="modal-footer">
+              <button
+                onClick={() => setShowAISettings(false)}
+                className="btn btn-gray"
+              >
+                取消
+              </button>
+              <button
+                onClick={() => {
+                  setShowAISettings(false);
+                  setImportExportStatus({
+                    type: 'success',
+                    message: 'AI设置已保存'
+                  });
+                  setTimeout(() => setImportExportStatus(null), 3000);
+                }}
+                className="btn btn-blue"
+              >
+                保存设置
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {showDataManager && (
         <div className="modal-overlay">
           <div className="modal-content data-manager-modal">
@@ -1593,7 +2046,13 @@ const WorkOrganizer = () => {
                 </button>
               </div>
               <div className="tip-text">
-                🛡️ 数据加密存储：AI能识别10种任务类型，提供针对性的执行步骤分解
+                🛡️ 数据加密存储 | 🧠 支持DeepSeek AI智能分析 | 
+                <button 
+                  onClick={() => setShowAISettings(true)}
+                  className="inline-settings-btn"
+                >
+                  AI设置
+                </button>
               </div>
             </div>
 
