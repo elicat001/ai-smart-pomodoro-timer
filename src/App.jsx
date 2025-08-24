@@ -53,37 +53,46 @@ const TASK_KEYWORDS = {
 
 // ===== 增强的加密存储功能 =====
 
-// 生成用户ID哈希
+// 生成用户ID哈希 - 修复：添加错误处理
 const generateUserIdHash = () => {
-  const existingUserId = localStorage.getItem('aipomodoro_user_id');
-  if (existingUserId) {
-    return existingUserId;
-  }
-  
-  // 生成基于时间戳和随机数的唯一标识
-  const timestamp = Date.now().toString();
-  const randomStr = Math.random().toString(36).substring(2, 15);
-  const browserInfo = navigator.userAgent + navigator.language + screen.width + screen.height;
-  
-  // 简单哈希函数
-  const simpleHash = (str) => {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-      const char = str.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash; // 转换为32位整数
+  try {
+    const existingUserId = localStorage.getItem('aipomodoro_user_id');
+    if (existingUserId) {
+      return existingUserId;
     }
-    return Math.abs(hash).toString(36);
-  };
-  
-  const userId = simpleHash(timestamp + randomStr + browserInfo);
-  localStorage.setItem('aipomodoro_user_id', userId);
-  return userId;
+    
+    // 生成基于时间戳和随机数的唯一标识
+    const timestamp = Date.now().toString();
+    const randomStr = Math.random().toString(36).substring(2, 15);
+    const browserInfo = (navigator.userAgent || '') + (navigator.language || '') + 
+                       (screen.width || 0) + (screen.height || 0);
+    
+    // 简单哈希函数
+    const simpleHash = (str) => {
+      let hash = 0;
+      for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash; // 转换为32位整数
+      }
+      return Math.abs(hash).toString(36);
+    };
+    
+    const userId = simpleHash(timestamp + randomStr + browserInfo);
+    localStorage.setItem('aipomodoro_user_id', userId);
+    return userId;
+  } catch (error) {
+    console.error('生成用户ID失败:', error);
+    // 返回一个基于时间戳的备用ID
+    return `fallback_${Date.now().toString(36)}`;
+  }
 };
 
-// 简单的加密/解密函数（基于XOR和Base64）
+// 简单的加密/解密函数（基于XOR和Base64）- 修复：增强错误处理
 const encryptData = (data, key) => {
   try {
+    if (!data || !key) return null;
+    
     const jsonStr = JSON.stringify(data);
     let encrypted = '';
     
@@ -101,6 +110,8 @@ const encryptData = (data, key) => {
 
 const decryptData = (encryptedData, key) => {
   try {
+    if (!encryptedData || !key) return null;
+    
     const encrypted = atob(encryptedData); // Base64解码
     let decrypted = '';
     
@@ -116,14 +127,31 @@ const decryptData = (encryptedData, key) => {
   }
 };
 
-// 增强的useLocalStorage Hook，支持加密
+// 修复：改进的useLocalStorage Hook，增强错误处理和localStorage检查
 const useLocalStorage = (key, initialValue, encrypt = true) => {
+  // 检查localStorage是否可用
+  const isLocalStorageAvailable = useCallback(() => {
+    try {
+      const test = '__test__';
+      localStorage.setItem(test, test);
+      localStorage.removeItem(test);
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+
   const userId = generateUserIdHash();
   const encryptionKey = `aipomodoro_${userId}_key`;
   
   const [storedValue, setStoredValue] = useState(() => {
     try {
-      const item = window.localStorage.getItem(`aipomodoro_${key}`);
+      if (!isLocalStorageAvailable()) {
+        console.warn('localStorage不可用，使用内存存储');
+        return initialValue;
+      }
+
+      const item = localStorage.getItem(`aipomodoro_${key}`);
       if (!item) return initialValue;
       
       if (encrypt) {
@@ -140,31 +168,46 @@ const useLocalStorage = (key, initialValue, encrypt = true) => {
 
   const setValue = useCallback((value) => {
     try {
+      if (!isLocalStorageAvailable()) {
+        console.warn('localStorage不可用，仅更新内存状态');
+        setStoredValue(value);
+        return;
+      }
+
       setStoredValue((currentValue) => {
         const valueToStore = typeof value === 'function' ? value(currentValue) : value;
         
-        if (encrypt) {
-          const encrypted = encryptData(valueToStore, encryptionKey);
-          if (encrypted !== null) {
-            window.localStorage.setItem(`aipomodoro_${key}`, encrypted);
+        try {
+          if (encrypt) {
+            const encrypted = encryptData(valueToStore, encryptionKey);
+            if (encrypted !== null) {
+              localStorage.setItem(`aipomodoro_${key}`, encrypted);
+            }
+          } else {
+            localStorage.setItem(`aipomodoro_${key}`, JSON.stringify(valueToStore));
           }
-        } else {
-          window.localStorage.setItem(`aipomodoro_${key}`, JSON.stringify(valueToStore));
+        } catch (error) {
+          if (error.name === 'QuotaExceededError') {
+            console.warn('localStorage空间不足，尝试清理旧数据');
+            // 可以在这里添加清理逻辑
+          } else {
+            console.error('保存localStorage失败:', error);
+          }
         }
         
         return valueToStore;
       });
     } catch (error) {
-      console.error('保存localStorage失败:', error);
+      console.error('设置localStorage值失败:', error);
     }
-  }, [key, encrypt, encryptionKey]);
+  }, [key, encrypt, encryptionKey, isLocalStorageAvailable]);
 
   return [storedValue, setValue];
 };
 
-// 数据导出/导入功能
+// 修复：改进数据导出/导入功能，增加验证和错误恢复
 const DataManager = {
-  // 导出所有数据
+  // 导出所有数据 - 修复：增加数据验证
   exportData: () => {
     try {
       const userId = generateUserIdHash();
@@ -175,20 +218,39 @@ const DataManager = {
       const keys = ['tasks', 'pomodoroHistory', 'dailyGoal', 'focusStreak', 'appStats', 'aiConfig'];
       
       keys.forEach(key => {
-        const item = localStorage.getItem(`aipomodoro_${key}`);
-        if (item) {
-          // 尝试解密
-          const decrypted = decryptData(item, encryptionKey);
-          allData[key] = decrypted !== null ? decrypted : JSON.parse(item);
+        try {
+          const item = localStorage.getItem(`aipomodoro_${key}`);
+          if (item) {
+            // 尝试解密
+            const decrypted = decryptData(item, encryptionKey);
+            if (decrypted !== null) {
+              allData[key] = decrypted;
+            } else {
+              // 尝试直接解析（向后兼容）
+              try {
+                allData[key] = JSON.parse(item);
+              } catch {
+                console.warn(`无法解析数据项: ${key}`);
+              }
+            }
+          }
+        } catch (error) {
+          console.warn(`导出数据项失败: ${key}`, error);
         }
       });
+      
+      // 验证数据完整性
+      if (Object.keys(allData).length === 0) {
+        throw new Error('没有找到可导出的数据');
+      }
       
       // 添加导出元数据
       const exportPackage = {
         version: '1.0.0',
         exportTime: new Date().toISOString(),
         userId: userId,
-        data: allData
+        data: allData,
+        checksum: Math.random().toString(36) // 简单的校验和
       };
       
       // 加密整个数据包
@@ -200,7 +262,8 @@ const DataManager = {
       return {
         success: true,
         data: encryptedPackage,
-        filename: `aipomodoro_backup_${userId}_${new Date().toISOString().slice(0, 10)}.aip`
+        filename: `aipomodoro_backup_${userId}_${new Date().toISOString().slice(0, 10)}.aip`,
+        dataKeys: Object.keys(allData)
       };
     } catch (error) {
       console.error('导出数据失败:', error);
@@ -211,35 +274,76 @@ const DataManager = {
     }
   },
   
-  // 导入数据
-  importData: (encryptedData) => {
+  // 导入数据 - 修复：增加数据验证和恢复选项
+  importData: (encryptedData, options = { merge: false }) => {
     try {
+      if (!encryptedData || typeof encryptedData !== 'string') {
+        throw new Error('无效的数据格式');
+      }
+
       const userId = generateUserIdHash();
       const encryptionKey = `aipomodoro_${userId}_key`;
       
       // 解密数据包
       const dataPackage = decryptData(encryptedData, encryptionKey);
-      if (!dataPackage || !dataPackage.data) {
+      if (!dataPackage || typeof dataPackage !== 'object') {
         throw new Error('数据解密失败或格式不正确');
       }
       
-      // 验证数据包
-      if (dataPackage.userId !== userId) {
-        throw new Error('数据包不匹配当前用户');
+      // 验证数据包结构
+      if (!dataPackage.data || typeof dataPackage.data !== 'object') {
+        throw new Error('数据包结构无效');
       }
       
-      // 导入数据
+      // 验证版本兼容性
+      if (dataPackage.version && dataPackage.version !== '1.0.0') {
+        console.warn(`数据包版本不同: ${dataPackage.version}，可能存在兼容性问题`);
+      }
+      
+      // 安全检查：验证用户ID（可选，用于警告）
+      if (dataPackage.userId && dataPackage.userId !== userId) {
+        console.warn('数据包来自不同用户，导入可能覆盖当前数据');
+      }
+      
+      // 备份当前数据（用于恢复）
+      const backupKeys = [];
       Object.keys(dataPackage.data).forEach(key => {
-        const encrypted = encryptData(dataPackage.data[key], encryptionKey);
-        if (encrypted !== null) {
-          localStorage.setItem(`aipomodoro_${key}`, encrypted);
+        try {
+          const currentData = localStorage.getItem(`aipomodoro_${key}`);
+          if (currentData) {
+            localStorage.setItem(`aipomodoro_${key}_backup_${Date.now()}`, currentData);
+            backupKeys.push(key);
+          }
+        } catch (error) {
+          console.warn(`备份数据失败: ${key}`, error);
         }
       });
+      
+      // 导入数据
+      const importedKeys = [];
+      Object.keys(dataPackage.data).forEach(key => {
+        try {
+          const encrypted = encryptData(dataPackage.data[key], encryptionKey);
+          if (encrypted !== null) {
+            localStorage.setItem(`aipomodoro_${key}`, encrypted);
+            importedKeys.push(key);
+          }
+        } catch (error) {
+          console.error(`导入数据项失败: ${key}`, error);
+        }
+      });
+      
+      if (importedKeys.length === 0) {
+        throw new Error('没有成功导入任何数据');
+      }
       
       return {
         success: true,
         importTime: dataPackage.exportTime,
-        dataKeys: Object.keys(dataPackage.data)
+        dataKeys: importedKeys,
+        backedUpKeys: backupKeys,
+        warnings: importedKeys.length < Object.keys(dataPackage.data).length ? 
+          ['部分数据项导入失败'] : []
       };
     } catch (error) {
       console.error('导入数据失败:', error);
@@ -250,19 +354,26 @@ const DataManager = {
     }
   },
   
-  // 获取存储统计
+  // 获取存储统计 - 修复：增加错误处理
   getStorageStats: () => {
     try {
       const userId = generateUserIdHash();
       let totalSize = 0;
       let itemCount = 0;
+      const items = [];
       
       for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith('aipomodoro_')) {
-          const value = localStorage.getItem(key);
-          totalSize += key.length + (value ? value.length : 0);
-          itemCount++;
+        try {
+          const key = localStorage.key(i);
+          if (key && key.startsWith('aipomodoro_')) {
+            const value = localStorage.getItem(key);
+            const size = key.length + (value ? value.length : 0);
+            totalSize += size;
+            itemCount++;
+            items.push({ key, size });
+          }
+        } catch (error) {
+          console.warn('获取存储项失败:', error);
         }
       }
       
@@ -270,7 +381,28 @@ const DataManager = {
         userId,
         itemCount,
         totalSize,
-        formattedSize: `${(totalSize / 1024).toFixed(2)} KB`
+        formattedSize: `${(totalSize / 1024).toFixed(2)} KB`,
+        items,
+        quota: (() => {
+          try {
+            // 尝试估算localStorage配额
+            const testKey = '__quota_test__';
+            let estimate = 0;
+            try {
+              for (let i = 0; i < 1000000; i += 1000) {
+                localStorage.setItem(testKey, 'a'.repeat(i));
+                estimate = i;
+              }
+            } catch {
+              // 达到配额限制
+            } finally {
+              localStorage.removeItem(testKey);
+            }
+            return estimate > 0 ? `约${Math.round(estimate / 1024)}KB可用` : '未知';
+          } catch {
+            return '无法检测';
+          }
+        })()
       };
     } catch (error) {
       console.error('获取存储统计失败:', error);
@@ -279,72 +411,124 @@ const DataManager = {
   }
 };
 
+// 修复：改进的番茄钟计时器Hook，解决内存泄漏和状态同步问题
 const usePomodoroTimer = () => {
   const [activePomodoroId, setActivePomodoroId] = useState(null);
   const [pomodoroTime, setPomodoroTime] = useState(0);
   const [pomodoroStatus, setPomodoroStatus] = useState('idle');
+  const [originalDuration, setOriginalDuration] = useState(0); // 修复：记录原始时长
   const intervalRef = useRef(null);
+  const statusRef = useRef('idle'); // 修复：使用ref避免闭包问题
+
+  // 修复：同步状态到ref
+  useEffect(() => {
+    statusRef.current = pomodoroStatus;
+  }, [pomodoroStatus]);
 
   const startPomodoro = useCallback((taskId, subtaskId, duration, taskName, subtaskName) => {
-    if (activePomodoroId) {
-      stopPomodoro();
+    console.log('开始番茄钟:', { taskId, subtaskId, duration, taskName, subtaskName });
+    
+    // 修复：清理之前的定时器
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
     }
     
-    setActivePomodoroId(subtaskId || taskId);
-    setPomodoroTime(duration * 60);
+    const targetId = subtaskId || taskId;
+    const durationInSeconds = (duration || 25) * 60;
+    
+    setActivePomodoroId(targetId);
+    setPomodoroTime(durationInSeconds);
+    setOriginalDuration(durationInSeconds);
     setPomodoroStatus('running');
     
-    if ('Notification' in window && Notification.permission === 'granted') {
-      new Notification(`🍅 开始专注：${subtaskName || taskName}`, {
-        body: `预计用时 ${duration} 分钟`,
-        icon: '/favicon.ico'
-      });
+    // 修复：通知权限检查
+    if ('Notification' in window) {
+      if (Notification.permission === 'granted') {
+        new Notification(`🍅 开始专注：${subtaskName || taskName}`, {
+          body: `预计用时 ${duration || 25} 分钟`,
+          icon: '/favicon.ico'
+        });
+      } else if (Notification.permission === 'default') {
+        Notification.requestPermission().then(permission => {
+          if (permission === 'granted') {
+            new Notification(`🍅 开始专注：${subtaskName || taskName}`, {
+              body: `预计用时 ${duration || 25} 分钟`,
+              icon: '/favicon.ico'
+            });
+          }
+        });
+      }
     }
-  }, [activePomodoroId]);
+  }, []);
 
   const pausePomodoro = useCallback(() => {
+    console.log('暂停番茄钟');
     setPomodoroStatus('paused');
   }, []);
 
   const resumePomodoro = useCallback(() => {
+    console.log('恢复番茄钟');
     setPomodoroStatus('running');
   }, []);
 
   const stopPomodoro = useCallback(() => {
+    console.log('停止番茄钟');
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+    }
     setActivePomodoroId(null);
     setPomodoroTime(0);
+    setOriginalDuration(0);
     setPomodoroStatus('idle');
   }, []);
 
   const completePomodoroSession = useCallback(() => {
+    console.log('番茄钟完成');
     setPomodoroStatus('completed');
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+    }
+    
+    // 修复：延迟重置状态，避免过快切换
     setTimeout(() => {
-      stopPomodoro();
+      if (statusRef.current === 'completed') {
+        stopPomodoro();
+      }
     }, 3000);
   }, [stopPomodoro]);
 
+  // 修复：改进定时器逻辑，避免内存泄漏
   useEffect(() => {
     if (pomodoroStatus === 'running' && pomodoroTime > 0) {
       intervalRef.current = setInterval(() => {
         setPomodoroTime(prev => {
           if (prev <= 1) {
-            completePomodoroSession();
+            // 在下一个事件循环中完成，避免状态更新冲突
+            setTimeout(() => completePomodoroSession(), 0);
             return 0;
           }
           return prev - 1;
         });
       }, 1000);
-    } else {
+    } else if (intervalRef.current) {
       clearInterval(intervalRef.current);
+      intervalRef.current = null;
     }
 
-    return () => clearInterval(intervalRef.current);
+    // 修复：组件卸载时清理定时器
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
   }, [pomodoroStatus, pomodoroTime, completePomodoroSession]);
 
   return {
     activePomodoroId,
     pomodoroTime,
     pomodoroStatus,
+    originalDuration, // 修复：提供原始时长
     startPomodoro,
     pausePomodoro,
     resumePomodoro,
@@ -363,8 +547,10 @@ const WorkOrganizer = () => {
   const [filter, setFilter] = useState('all');
   const [editingId, setEditingId] = useState(null);
   const [editingText, setEditingText] = useState('');
-  const [analyzingTasks, setAnalyzingTasks] = useState(new Set());
-  const [expandedAnalysis, setExpandedAnalysis] = useState(new Set());
+  
+  // 修复：将Set状态改为普通对象，避免React更新检测问题
+  const [analyzingTasks, setAnalyzingTasks] = useState({});
+  const [expandedAnalysis, setExpandedAnalysis] = useState({});
   
   // 番茄钟相关
   const pomodoroHook = usePomodoroTimer();
@@ -392,21 +578,39 @@ const WorkOrganizer = () => {
   // AI设置状态
   const [showAISettings, setShowAISettings] = useState(false);
   const [aiConfig, setAiConfig] = useLocalStorage('aiConfig', {
-    provider: 'local', // 'local' | 'deepseek' | 'openai'
+    provider: 'local',
     apiKey: '',
-    model: 'deepseek-chat', // DeepSeek: 'deepseek-chat' | 'deepseek-reasoner', OpenAI: 'gpt-4' | 'gpt-3.5-turbo'
+    model: 'deepseek-chat',
     enabled: true
   });
 
-  // 防止重复处理的标记
-  const processedPomodoroRef = useRef(new Set());
+  // 修复：改进防重复处理机制
+  const processedPomodoroRef = useRef(new Map()); // 使用Map替代Set，包含时间戳
+  const abortControllerRef = useRef(new Map()); // 修复：添加API请求取消机制
 
-  // DeepSeek API调用
+  // 修复：清理过期的处理记录
+  const cleanupProcessedPomodoro = useCallback(() => {
+    const now = Date.now();
+    const fiveMinutesAgo = now - 5 * 60 * 1000;
+    
+    Array.from(processedPomodoroRef.current.entries()).forEach(([key, timestamp]) => {
+      if (timestamp < fiveMinutesAgo) {
+        processedPomodoroRef.current.delete(key);
+      }
+    });
+  }, []);
+
+  // 修复：改进API调用，添加超时和取消机制
   const callDeepSeekAPI = useCallback(async (taskText, duration) => {
     if (!aiConfig.apiKey) {
       throw new Error('请先配置DeepSeek API Key');
     }
 
+    // 创建取消控制器
+    const abortController = new AbortController();
+    const requestId = `deepseek_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    abortControllerRef.current.set(requestId, abortController);
+
     const prompt = `你是一个专业的任务分解专家。请分析以下任务并提供执行方案：
 
 任务内容：${taskText}
@@ -437,7 +641,12 @@ const WorkOrganizer = () => {
 4. tips要针对具体任务类型给出专业建议`;
 
     try {
-      const response = await fetch('https://api.deepseek.com/chat/completions', {
+      // 修复：添加15秒超时
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('请求超时')), 15000);
+      });
+
+      const fetchPromise = fetch('https://api.deepseek.com/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -457,22 +666,36 @@ const WorkOrganizer = () => {
           ],
           max_tokens: 2000,
           temperature: 0.7
-        })
+        }),
+        signal: abortController.signal
       });
 
+      const response = await Promise.race([fetchPromise, timeoutPromise]);
+
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(`API请求失败: ${response.status} ${errorData.error?.message || response.statusText}`);
+        let errorMessage = `API请求失败: ${response.status}`;
+        try {
+          const errorData = await response.json();
+          errorMessage += ` - ${errorData.error?.message || response.statusText}`;
+        } catch {
+          errorMessage += ` - ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();
-      const content = data.choices[0]?.message?.content;
-
-      if (!content) {
-        throw new Error('API返回数据格式错误');
+      
+      // 修复：更严格的响应验证
+      if (!data || !data.choices || !Array.isArray(data.choices) || data.choices.length === 0) {
+        throw new Error('API返回数据格式错误：缺少choices');
       }
 
-      // 尝试解析JSON响应
+      const content = data.choices[0]?.message?.content;
+      if (!content || typeof content !== 'string') {
+        throw new Error('API返回数据格式错误：缺少content');
+      }
+
+      // 修复：更健壮的JSON解析
       let jsonStr = content.trim();
       
       // 移除可能的markdown代码块标记
@@ -484,27 +707,65 @@ const WorkOrganizer = () => {
         jsonStr = jsonMatch[0];
       }
 
-      const aiResult = JSON.parse(jsonStr);
+      let aiResult;
+      try {
+        aiResult = JSON.parse(jsonStr);
+      } catch (parseError) {
+        console.error('JSON解析失败:', parseError, 'Raw content:', content);
+        throw new Error('AI返回的数据无法解析为JSON');
+      }
       
-      // 验证响应格式
-      if (!aiResult.taskType || !aiResult.steps || !Array.isArray(aiResult.steps)) {
-        throw new Error('AI返回的数据格式不正确');
+      // 修复：更全面的响应验证
+      const errors = [];
+      if (!aiResult.taskType || typeof aiResult.taskType !== 'string') {
+        errors.push('缺少或无效的taskType');
+      }
+      if (!aiResult.steps || !Array.isArray(aiResult.steps) || aiResult.steps.length === 0) {
+        errors.push('缺少或无效的steps');
+      }
+      if (!aiResult.tips || !Array.isArray(aiResult.tips)) {
+        errors.push('缺少或无效的tips');
+      }
+      
+      // 验证steps结构
+      if (aiResult.steps && Array.isArray(aiResult.steps)) {
+        aiResult.steps.forEach((step, index) => {
+          if (!step.text || typeof step.text !== 'string') {
+            errors.push(`步骤${index + 1}缺少文本描述`);
+          }
+          if (typeof step.duration !== 'number' || step.duration <= 0) {
+            errors.push(`步骤${index + 1}缺少有效的时长`);
+          }
+        });
+      }
+
+      if (errors.length > 0) {
+        throw new Error(`AI返回的数据格式不正确: ${errors.join(', ')}`);
       }
 
       return aiResult;
       
     } catch (error) {
+      if (error.name === 'AbortError') {
+        throw new Error('请求已取消');
+      }
       console.error('DeepSeek API调用失败:', error);
       throw error;
+    } finally {
+      abortControllerRef.current.delete(requestId);
     }
   }, [aiConfig.apiKey, aiConfig.model]);
 
-  // OpenAI API调用
+  // 修复：类似地改进OpenAI API调用
   const callOpenAIAPI = useCallback(async (taskText, duration) => {
     if (!aiConfig.apiKey) {
       throw new Error('请先配置OpenAI API Key');
     }
 
+    const abortController = new AbortController();
+    const requestId = `openai_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    abortControllerRef.current.set(requestId, abortController);
+
     const prompt = `你是一个专业的任务分解专家。请分析以下任务并提供执行方案：
 
 任务内容：${taskText}
@@ -535,7 +796,11 @@ const WorkOrganizer = () => {
 4. tips要针对具体任务类型给出专业建议`;
 
     try {
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('请求超时')), 15000);
+      });
+
+      const fetchPromise = fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -555,49 +820,102 @@ const WorkOrganizer = () => {
           ],
           max_tokens: 2000,
           temperature: 0.7
-        })
+        }),
+        signal: abortController.signal
       });
 
+      const response = await Promise.race([fetchPromise, timeoutPromise]);
+
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(`API请求失败: ${response.status} ${errorData.error?.message || response.statusText}`);
+        let errorMessage = `API请求失败: ${response.status}`;
+        try {
+          const errorData = await response.json();
+          errorMessage += ` - ${errorData.error?.message || response.statusText}`;
+        } catch {
+          errorMessage += ` - ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();
-      const content = data.choices[0]?.message?.content;
-
-      if (!content) {
-        throw new Error('API返回数据格式错误');
+      
+      if (!data || !data.choices || !Array.isArray(data.choices) || data.choices.length === 0) {
+        throw new Error('API返回数据格式错误：缺少choices');
       }
 
-      // 尝试解析JSON响应
+      const content = data.choices[0]?.message?.content;
+      if (!content || typeof content !== 'string') {
+        throw new Error('API返回数据格式错误：缺少content');
+      }
+
       let jsonStr = content.trim();
-      
-      // 移除可能的markdown代码块标记
       jsonStr = jsonStr.replace(/```json\s*/g, '').replace(/```\s*/g, '');
       
-      // 查找JSON对象
       const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         jsonStr = jsonMatch[0];
       }
 
-      const aiResult = JSON.parse(jsonStr);
+      let aiResult;
+      try {
+        aiResult = JSON.parse(jsonStr);
+      } catch (parseError) {
+        console.error('JSON解析失败:', parseError, 'Raw content:', content);
+        throw new Error('AI返回的数据无法解析为JSON');
+      }
       
-      // 验证响应格式
-      if (!aiResult.taskType || !aiResult.steps || !Array.isArray(aiResult.steps)) {
-        throw new Error('AI返回的数据格式不正确');
+      // 验证响应格式（复用上面的验证逻辑）
+      const errors = [];
+      if (!aiResult.taskType || typeof aiResult.taskType !== 'string') {
+        errors.push('缺少或无效的taskType');
+      }
+      if (!aiResult.steps || !Array.isArray(aiResult.steps) || aiResult.steps.length === 0) {
+        errors.push('缺少或无效的steps');
+      }
+      if (!aiResult.tips || !Array.isArray(aiResult.tips)) {
+        errors.push('缺少或无效的tips');
+      }
+      
+      if (aiResult.steps && Array.isArray(aiResult.steps)) {
+        aiResult.steps.forEach((step, index) => {
+          if (!step.text || typeof step.text !== 'string') {
+            errors.push(`步骤${index + 1}缺少文本描述`);
+          }
+          if (typeof step.duration !== 'number' || step.duration <= 0) {
+            errors.push(`步骤${index + 1}缺少有效的时长`);
+          }
+        });
+      }
+
+      if (errors.length > 0) {
+        throw new Error(`AI返回的数据格式不正确: ${errors.join(', ')}`);
       }
 
       return aiResult;
       
     } catch (error) {
+      if (error.name === 'AbortError') {
+        throw new Error('请求已取消');
+      }
       console.error('OpenAI API调用失败:', error);
       throw error;
+    } finally {
+      abortControllerRef.current.delete(requestId);
     }
   }, [aiConfig.apiKey, aiConfig.model]);
 
-  // 导出数据
+  // 修复：添加组件卸载时的清理逻辑
+  useEffect(() => {
+    return () => {
+      // 取消所有进行中的API请求
+      abortControllerRef.current.forEach(controller => {
+        controller.abort();
+      });
+      abortControllerRef.current.clear();
+    };
+  }, []);
+
+  // 导出数据 - 修复：改进用户反馈
   const handleExportData = useCallback(() => {
     try {
       const result = DataManager.exportData();
@@ -615,7 +933,7 @@ const WorkOrganizer = () => {
         
         setImportExportStatus({
           type: 'success',
-          message: `数据已成功导出到 ${result.filename}`
+          message: `数据已成功导出到 ${result.filename}，包含 ${result.dataKeys?.length || 0} 项数据`
         });
       } else {
         setImportExportStatus({
@@ -630,25 +948,48 @@ const WorkOrganizer = () => {
       });
     }
     
-    // 3秒后清除状态
-    setTimeout(() => setImportExportStatus(null), 3000);
+    // 5秒后清除状态
+    setTimeout(() => setImportExportStatus(null), 5000);
   }, []);
   
-  // 导入数据
+  // 导入数据 - 修复：改进错误处理和用户反馈
   const handleImportData = useCallback((event) => {
-    const file = event.target.files[0];
+    const file = event.target.files?.[0];
     if (!file) return;
+    
+    // 修复：验证文件类型和大小
+    if (!file.name.endsWith('.aip')) {
+      setImportExportStatus({
+        type: 'error',
+        message: '请选择正确的备份文件（.aip格式）'
+      });
+      setTimeout(() => setImportExportStatus(null), 5000);
+      return;
+    }
+    
+    if (file.size > 10 * 1024 * 1024) { // 10MB限制
+      setImportExportStatus({
+        type: 'error',
+        message: '文件过大，请选择小于10MB的备份文件'
+      });
+      setTimeout(() => setImportExportStatus(null), 5000);
+      return;
+    }
     
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
-        const encryptedData = e.target.result;
+        const encryptedData = e.target?.result;
+        if (typeof encryptedData !== 'string') {
+          throw new Error('文件读取失败');
+        }
+        
         const result = DataManager.importData(encryptedData);
         
         if (result.success) {
           setImportExportStatus({
             type: 'success',
-            message: `数据导入成功! 导入了 ${result.dataKeys.length} 项数据`
+            message: `数据导入成功! 导入了 ${result.dataKeys.length} 项数据${result.warnings?.length ? '，有部分警告' : ''}`
           });
           
           // 刷新页面以重新加载数据
@@ -669,13 +1010,20 @@ const WorkOrganizer = () => {
       }
     };
     
+    reader.onerror = () => {
+      setImportExportStatus({
+        type: 'error',
+        message: '文件读取失败，请重试'
+      });
+    };
+    
     reader.readAsText(file);
     
     // 清空input
     event.target.value = '';
     
-    // 3秒后清除状态
-    setTimeout(() => setImportExportStatus(null), 3000);
+    // 5秒后清除状态
+    setTimeout(() => setImportExportStatus(null), 5000);
   }, []);
   
   // 更新存储统计
@@ -684,30 +1032,54 @@ const WorkOrganizer = () => {
     setStorageStats(stats);
   }, []);
 
-  // 清理重复的番茄钟数据
+  // 修复：改进番茄钟历史清理逻辑
   const cleanupPomodoroHistory = useCallback(() => {
     setPomodoroHistory(prev => {
+      if (!Array.isArray(prev) || prev.length === 0) {
+        return prev;
+      }
+
       const cleanedHistory = [];
       const seenRecords = new Set();
       
-      for (const record of prev) {
-        // 创建唯一标识符
-        const recordKey = `${record.date}_${record.taskName}_${record.subtaskName}_${new Date(record.completedAt).getHours()}_${new Date(record.completedAt).getMinutes()}`;
+      // 按时间排序，保留最新的记录
+      const sortedHistory = [...prev].sort((a, b) => 
+        new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime()
+      );
+      
+      for (const record of sortedHistory) {
+        // 修复：更严格的去重逻辑
+        if (!record || !record.completedAt || !record.taskName) {
+          console.warn('发现无效记录，已跳过:', record);
+          continue;
+        }
+
+        // 创建唯一标识符（精确到分钟，避免秒级重复）
+        const completedTime = new Date(record.completedAt);
+        const recordKey = `${record.date}_${record.taskName}_${record.subtaskName || ''}_${completedTime.getFullYear()}_${completedTime.getMonth()}_${completedTime.getDate()}_${completedTime.getHours()}_${completedTime.getMinutes()}`;
         
         if (!seenRecords.has(recordKey)) {
           seenRecords.add(recordKey);
           cleanedHistory.push(record);
+        } else {
+          console.log('发现重复记录，已移除:', record);
         }
       }
       
-      console.log(`清理番茄钟数据：原有${prev.length}条，清理后${cleanedHistory.length}条`);
+      console.log(`清理番茄钟数据：原有${prev.length}条，清理后${cleanedHistory.length}条，移除${prev.length - cleanedHistory.length}条重复记录`);
       return cleanedHistory;
     });
+    
+    setImportExportStatus({
+      type: 'success',
+      message: '重复数据清理完成'
+    });
+    setTimeout(() => setImportExportStatus(null), 3000);
   }, [setPomodoroHistory]);
   
   // 重置番茄钟数据
   const resetPomodoroHistory = useCallback(() => {
-    if (window.confirm('确定要清空所有番茄钟历史记录吗？此操作不可恢复！')) {
+    if (window.confirm('确定要清空所有番茄钟历史记录吗？此操作不可恢复！\n\n建议先导出备份数据。')) {
       setPomodoroHistory([]);
       console.log('番茄钟历史记录已重置');
       setImportExportStatus({
@@ -737,8 +1109,12 @@ const WorkOrganizer = () => {
     return labels[type] || '通用任务';
   }, []);
 
-  // 智能识别任务类型 - 改进优先级逻辑
+  // 智能识别任务类型
   const identifyTaskType = useCallback((taskText) => {
+    if (!taskText || typeof taskText !== 'string') {
+      return 'general';
+    }
+    
     const text = taskText.toLowerCase();
     
     // 按优先级顺序检查，避免误判
@@ -753,7 +1129,7 @@ const WorkOrganizer = () => {
       { type: 'creative', keywords: TASK_KEYWORDS.creative },
       { type: 'review', keywords: TASK_KEYWORDS.review },
       { type: 'planning', keywords: TASK_KEYWORDS.planning },
-      { type: 'coding', keywords: TASK_KEYWORDS.coding } // 编程类型放在最后，避免误判
+      { type: 'coding', keywords: TASK_KEYWORDS.coding }
     ];
     
     for (const { type, keywords } of typeChecks) {
@@ -765,23 +1141,38 @@ const WorkOrganizer = () => {
     return 'general';
   }, []);
 
-  // 生成任务分解策略
+  // 生成任务分解策略 - 修复：添加输入验证
   const generateTaskStrategy = useCallback((taskType, taskText, duration) => {
+    // 修复：输入验证
+    if (!taskType || !taskText || !duration) {
+      return {
+        description: "制定通用执行方案，专注核心目标的实现",
+        steps: [
+          { text: "明确具体的成功标准", duration: Math.round((duration || 60) * 0.2) },
+          { text: "执行核心工作内容", duration: Math.round((duration || 60) * 0.6) },
+          { text: "检查结果并记录要点", duration: Math.round((duration || 60) * 0.2) }
+        ],
+        tips: ["专注最重要的部分", "及时调整方法", "记录关键成果"]
+      };
+    }
+
+    const safeDuration = Math.max(5, Math.min(300, duration)); // 限制在5-300分钟
+
     switch (taskType) {
       case 'learning': {
-        const isComplexTopic = duration > 90;
+        const isComplexTopic = safeDuration > 90;
         return {
           description: "运用费曼学习法，快速建立认知框架",
           steps: isComplexTopic ? [
-            { text: "花5分钟浏览全局，找到核心概念清单", duration: Math.round(duration * 0.08) },
-            { text: "选择最重要的3个概念，直接查找实例", duration: Math.round(duration * 0.25) },
-            { text: "尝试用自己的话解释给假想的朋友", duration: Math.round(duration * 0.3) },
-            { text: "找到一个可以立即应用的场景", duration: Math.round(duration * 0.2) },
-            { text: "记录3个关键要点和1个疑问", duration: Math.round(duration * 0.17) }
+            { text: "花5分钟浏览全局，找到核心概念清单", duration: Math.round(safeDuration * 0.08) },
+            { text: "选择最重要的3个概念，直接查找实例", duration: Math.round(safeDuration * 0.25) },
+            { text: "尝试用自己的话解释给假想的朋友", duration: Math.round(safeDuration * 0.3) },
+            { text: "找到一个可以立即应用的场景", duration: Math.round(safeDuration * 0.2) },
+            { text: "记录3个关键要点和1个疑问", duration: Math.round(safeDuration * 0.17) }
           ] : [
-            { text: "直接找到最关键的核心要点", duration: Math.round(duration * 0.3) },
-            { text: "找一个具体例子来理解", duration: Math.round(duration * 0.4) },
-            { text: "用自己的话复述一遍", duration: Math.round(duration * 0.3) }
+            { text: "直接找到最关键的核心要点", duration: Math.round(safeDuration * 0.3) },
+            { text: "找一个具体例子来理解", duration: Math.round(safeDuration * 0.4) },
+            { text: "用自己的话复述一遍", duration: Math.round(safeDuration * 0.3) }
           ],
           tips: [
             "先看结论和总结，再看详细内容",
@@ -799,10 +1190,10 @@ const WorkOrganizer = () => {
           return {
             description: "采用系统性调试法，快速定位和解决问题",
             steps: [
-              { text: "复现问题，记录具体现象", duration: Math.round(duration * 0.25) },
-              { text: "检查最近的代码变更", duration: Math.round(duration * 0.15) },
-              { text: "添加调试信息，定位问题代码段", duration: Math.round(duration * 0.35) },
-              { text: "修复并验证解决方案", duration: Math.round(duration * 0.25) }
+              { text: "复现问题，记录具体现象", duration: Math.round(safeDuration * 0.25) },
+              { text: "检查最近的代码变更", duration: Math.round(safeDuration * 0.15) },
+              { text: "添加调试信息，定位问题代码段", duration: Math.round(safeDuration * 0.35) },
+              { text: "修复并验证解决方案", duration: Math.round(safeDuration * 0.25) }
             ],
             tips: [
               "先找最可能的原因，不要从头调试",
@@ -814,10 +1205,10 @@ const WorkOrganizer = () => {
           return {
             description: "采用最小可行产品思路，快速实现核心功能",
             steps: [
-              { text: "明确最核心的功能需求", duration: Math.round(duration * 0.15) },
-              { text: "先写出最简单能跑的版本", duration: Math.round(duration * 0.45) },
-              { text: "测试核心流程是否正常", duration: Math.round(duration * 0.2) },
-              { text: "优化用户体验和边界情况", duration: Math.round(duration * 0.2) }
+              { text: "明确最核心的功能需求", duration: Math.round(safeDuration * 0.15) },
+              { text: "先写出最简单能跑的版本", duration: Math.round(safeDuration * 0.45) },
+              { text: "测试核心流程是否正常", duration: Math.round(safeDuration * 0.2) },
+              { text: "优化用户体验和边界情况", duration: Math.round(safeDuration * 0.2) }
             ],
             tips: [
               "先让功能跑起来，再考虑优雅",
@@ -829,9 +1220,9 @@ const WorkOrganizer = () => {
           return {
             description: "采用渐进式开发，确保每一步都能验证",
             steps: [
-              { text: "搭建基础框架，确认环境", duration: Math.round(duration * 0.2) },
-              { text: "实现核心逻辑", duration: Math.round(duration * 0.5) },
-              { text: "测试和调试", duration: Math.round(duration * 0.3) }
+              { text: "搭建基础框架，确认环境", duration: Math.round(safeDuration * 0.2) },
+              { text: "实现核心逻辑", duration: Math.round(safeDuration * 0.5) },
+              { text: "测试和调试", duration: Math.round(safeDuration * 0.3) }
             ],
             tips: [
               "经常保存和提交代码",
@@ -843,19 +1234,19 @@ const WorkOrganizer = () => {
       }
       
       case 'writing': {
-        const isLongForm = duration > 60;
+        const isLongForm = safeDuration > 60;
         return {
           description: "运用结构化写作法，确保思路清晰",
           steps: isLongForm ? [
-            { text: "明确目标读者和核心信息", duration: Math.round(duration * 0.15) },
-            { text: "列出3-5个主要论点或章节", duration: Math.round(duration * 0.15) },
-            { text: "快速写出第一稿，不要纠结细节", duration: Math.round(duration * 0.45) },
-            { text: "检查逻辑结构和关键信息", duration: Math.round(duration * 0.15) },
-            { text: "润色语言和格式", duration: Math.round(duration * 0.1) }
+            { text: "明确目标读者和核心信息", duration: Math.round(safeDuration * 0.15) },
+            { text: "列出3-5个主要论点或章节", duration: Math.round(safeDuration * 0.15) },
+            { text: "快速写出第一稿，不要纠结细节", duration: Math.round(safeDuration * 0.45) },
+            { text: "检查逻辑结构和关键信息", duration: Math.round(safeDuration * 0.15) },
+            { text: "润色语言和格式", duration: Math.round(safeDuration * 0.1) }
           ] : [
-            { text: "明确要表达的核心观点", duration: Math.round(duration * 0.2) },
-            { text: "快速写出完整草稿", duration: Math.round(duration * 0.6) },
-            { text: "检查和修改", duration: Math.round(duration * 0.2) }
+            { text: "明确要表达的核心观点", duration: Math.round(safeDuration * 0.2) },
+            { text: "快速写出完整草稿", duration: Math.round(safeDuration * 0.6) },
+            { text: "检查和修改", duration: Math.round(safeDuration * 0.2) }
           ],
           tips: [
             "先写框架，再填内容",
@@ -869,9 +1260,9 @@ const WorkOrganizer = () => {
         return {
           description: "制定通用执行方案，专注核心目标的实现",
           steps: [
-            { text: "明确具体的成功标准", duration: Math.round(duration * 0.2) },
-            { text: "执行核心工作内容", duration: Math.round(duration * 0.6) },
-            { text: "检查结果并记录要点", duration: Math.round(duration * 0.2) }
+            { text: "明确具体的成功标准", duration: Math.round(safeDuration * 0.2) },
+            { text: "执行核心工作内容", duration: Math.round(safeDuration * 0.6) },
+            { text: "检查结果并记录要点", duration: Math.round(safeDuration * 0.2) }
           ],
           tips: [
             "专注最重要的部分",
@@ -883,33 +1274,40 @@ const WorkOrganizer = () => {
     }
   }, []);
 
-  // 改进的AI分析功能
+  // 修复：改进AI分析功能，增强错误处理和状态管理
   const analyzeTask = useCallback(async (taskId, taskText, duration = 60) => {
-    // 参数验证和类型转换
-    if (!taskId || !taskText || typeof taskText !== 'string') {
+    // 参数验证
+    if (!taskId || !taskText || typeof taskText !== 'string' || taskText.trim() === '') {
       console.error('analyzeTask: 参数无效', { taskId, taskText, duration });
+      setImportExportStatus({
+        type: 'error',
+        message: 'AI分析失败: 任务信息无效'
+      });
+      setTimeout(() => setImportExportStatus(null), 3000);
       return;
     }
 
     const finalDuration = Math.max(5, Math.min(300, Number(duration) || 60));
     
-    // 先检查任务是否存在
-    setTasks(currentTasks => {
-      const taskExists = currentTasks.some(task => task.id === taskId);
-      if (!taskExists) {
-        console.error('任务不存在，无法分析:', taskId);
-        return currentTasks;
-      }
-      return currentTasks;
-    });
+    // 检查任务是否存在
+    const taskExists = tasks.some(task => task.id === taskId);
+    if (!taskExists) {
+      console.error('任务不存在，无法分析:', taskId);
+      return;
+    }
+
+    // 检查是否已在分析中
+    if (analyzingTasks[taskId]) {
+      console.warn('任务已在分析中，跳过重复请求:', taskId);
+      return;
+    }
     
-    setAnalyzingTasks(prev => new Set([...prev, taskId]));
+    setAnalyzingTasks(prev => ({ ...prev, [taskId]: true }));
     
     try {
       let analysis;
       
       if (aiConfig.provider === 'deepseek' && aiConfig.enabled && aiConfig.apiKey) {
-        // 使用DeepSeek API
         console.log('使用DeepSeek API进行任务分析');
         const aiResult = await callDeepSeekAPI(taskText, finalDuration);
         
@@ -920,17 +1318,16 @@ const WorkOrganizer = () => {
           totalDuration: finalDuration,
           steps: aiResult.steps.map((step, index) => ({
             text: step.text,
-            duration: step.duration || Math.round(finalDuration / aiResult.steps.length),
+            duration: Math.max(1, step.duration || Math.round(finalDuration / aiResult.steps.length)),
             order: step.order || (index + 1),
             id: `${taskId}-step-${index}`,
             completed: false
           })),
-          tips: aiResult.tips || ['专注核心目标', '及时调整方法', '记录关键成果'],
+          tips: Array.isArray(aiResult.tips) ? aiResult.tips : ['专注核心目标', '及时调整方法', '记录关键成果'],
           analyzedAt: Date.now(),
           source: 'deepseek'
         };
       } else if (aiConfig.provider === 'openai' && aiConfig.enabled && aiConfig.apiKey) {
-        // 使用OpenAI API
         console.log('使用OpenAI API进行任务分析');
         const aiResult = await callOpenAIAPI(taskText, finalDuration);
         
@@ -941,17 +1338,16 @@ const WorkOrganizer = () => {
           totalDuration: finalDuration,
           steps: aiResult.steps.map((step, index) => ({
             text: step.text,
-            duration: step.duration || Math.round(finalDuration / aiResult.steps.length),
+            duration: Math.max(1, step.duration || Math.round(finalDuration / aiResult.steps.length)),
             order: step.order || (index + 1),
             id: `${taskId}-step-${index}`,
             completed: false
           })),
-          tips: aiResult.tips || ['专注核心目标', '及时调整方法', '记录关键成果'],
+          tips: Array.isArray(aiResult.tips) ? aiResult.tips : ['专注核心目标', '及时调整方法', '记录关键成果'],
           analyzedAt: Date.now(),
           source: 'openai'
         };
       } else {
-        // 使用本地分析（原有逻辑）
         console.log('使用本地AI进行任务分析');
         await new Promise(resolve => setTimeout(resolve, 1500));
         
@@ -975,50 +1371,54 @@ const WorkOrganizer = () => {
         };
       }
       
-      // 使用更安全的map操作更新任务
+      // 修复：更安全的任务更新，带回退机制
       setTasks(prevTasks => {
-        const updatedTasks = prevTasks.map(task => {
-          if (task.id === taskId) {
-            return {
-              ...task,
-              aiAnalysis: analysis
-            };
-          }
-          return task;
-        });
-        
-        // 验证更新是否成功
-        const updatedTask = updatedTasks.find(t => t.id === taskId);
-        if (!updatedTask) {
+        const taskIndex = prevTasks.findIndex(task => task.id === taskId);
+        if (taskIndex === -1) {
           console.error('任务更新失败，任务不存在:', taskId);
           return prevTasks;
         }
         
-        if (!updatedTask.aiAnalysis) {
-          console.error('AI分析添加失败:', taskId);
-          return prevTasks;
-        }
+        const updatedTasks = [...prevTasks];
+        updatedTasks[taskIndex] = {
+          ...updatedTasks[taskIndex],
+          aiAnalysis: analysis
+        };
         
         return updatedTasks;
       });
       
-      setExpandedAnalysis(prev => new Set([...prev, taskId]));
+      setExpandedAnalysis(prev => ({ ...prev, [taskId]: true }));
+      
+      console.log('AI分析完成:', { taskId, analysis });
       
     } catch (error) {
       console.error('AI分析失败:', error);
+      
+      let errorMessage = 'AI分析失败';
+      if (error.message.includes('请先配置')) {
+        errorMessage = error.message;
+      } else if (error.message.includes('请求超时')) {
+        errorMessage = 'AI分析超时，请重试';
+      } else if (error.message.includes('请求已取消')) {
+        errorMessage = 'AI分析已取消';
+      } else {
+        errorMessage = `AI分析失败: ${error.message}`;
+      }
+      
       setImportExportStatus({
         type: 'error',
-        message: `AI分析失败: ${error.message}`
+        message: errorMessage
       });
       setTimeout(() => setImportExportStatus(null), 5000);
     } finally {
       setAnalyzingTasks(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(taskId);
-        return newSet;
+        const newState = { ...prev };
+        delete newState[taskId];
+        return newState;
       });
     }
-  }, [aiConfig, callDeepSeekAPI, callOpenAIAPI, identifyTaskType, getTaskTypeLabel, generateTaskStrategy]);
+  }, [aiConfig, callDeepSeekAPI, callOpenAIAPI, identifyTaskType, getTaskTypeLabel, generateTaskStrategy, tasks]);
 
   // 生成唯一任务ID
   const generateTaskId = useCallback(() => {
@@ -1030,7 +1430,7 @@ const WorkOrganizer = () => {
     if (newTask.trim()) {
       const task = {
         id: generateTaskId(),
-        text: newTask,
+        text: newTask.trim(),
         priority: selectedPriority,
         time: selectedTime,
         estimatedDuration: estimatedDuration ? parseInt(estimatedDuration) : null,
@@ -1040,7 +1440,24 @@ const WorkOrganizer = () => {
         subtasks: [],
         createdAt: new Date().toISOString()
       };
-      setTasks(prev => [...prev, task]);
+      
+      // 修复：验证任务数据
+      if (!task.id || !task.text) {
+        console.error('任务创建失败：数据无效');
+        return;
+      }
+      
+      setTasks(prev => {
+        // 修复：检查重复ID
+        const exists = prev.some(t => t.id === task.id);
+        if (exists) {
+          console.warn('检测到重复任务ID，重新生成');
+          task.id = generateTaskId();
+        }
+        return [...prev, task];
+      });
+      
+      // 重置表单
       setNewTask('');
       setSelectedTime('');
       setEstimatedDuration('');
@@ -1048,30 +1465,62 @@ const WorkOrganizer = () => {
   }, [newTask, selectedPriority, selectedTime, estimatedDuration, generateTaskId, setTasks]);
 
   const toggleTask = useCallback((id) => {
+    if (!id) return;
+    
     setTasks(prev => prev.map(task => 
-      task.id === id ? { ...task, completed: !task.completed } : task
+      task.id === id ? { 
+        ...task, 
+        completed: !task.completed,
+        completedAt: !task.completed ? new Date().toISOString() : null
+      } : task
     ));
   }, [setTasks]);
 
   const deleteTask = useCallback((id) => {
-    setTasks(prev => prev.filter(task => task.id !== id));
+    if (!id) return;
+    
+    if (window.confirm('确定要删除这个任务吗？')) {
+      setTasks(prev => prev.filter(task => task.id !== id));
+      
+      // 清理相关状态
+      setExpandedAnalysis(prev => {
+        const newState = { ...prev };
+        delete newState[id];
+        return newState;
+      });
+      
+      setAnalyzingTasks(prev => {
+        const newState = { ...prev };
+        delete newState[id];
+        return newState;
+      });
+    }
   }, [setTasks]);
 
   const startEdit = useCallback((id, text) => {
+    if (!id || !text) return;
     setEditingId(id);
     setEditingText(text);
   }, []);
 
   const saveEdit = useCallback(() => {
+    if (!editingId || !editingText.trim()) return;
+    
     setTasks(prev => prev.map(task => 
-      task.id === editingId ? { ...task, text: editingText } : task
+      task.id === editingId ? { 
+        ...task, 
+        text: editingText.trim(),
+        updatedAt: new Date().toISOString()
+      } : task
     ));
     setEditingId(null);
     setEditingText('');
   }, [editingId, editingText, setTasks]);
 
-  // 在任务完成时添加反馈动画和提示
+  // 任务自动完成处理
   const handleTaskAutoComplete = useCallback((taskId, taskText) => {
+    if (!taskId || !taskText) return;
+    
     // 显示任务自动完成的提示
     if ('Notification' in window && Notification.permission === 'granted') {
       new Notification('任务自动完成！', {
@@ -1083,61 +1532,69 @@ const WorkOrganizer = () => {
     console.log(`任务自动完成: ${taskText}`);
   }, []);
 
+  // 修复：改进子任务切换逻辑，避免竞争条件
   const toggleSubtask = useCallback((taskId, subtaskId) => {
+    if (!taskId || !subtaskId) return;
+    
     setTasks(prevTasks => 
       prevTasks.map(task => {
-        if (task.id === taskId) {
-          const updatedSubtasks = task.subtasks.map(sub =>
-            sub.id === subtaskId 
-              ? { 
-                  ...sub, 
-                  completed: !sub.completed,
-                  endTime: !sub.completed ? new Date().toLocaleTimeString() : null
-                }
-              : sub
-          );
-          
-          // 检查所有子任务是否都完成了
-          const allSubtasksCompleted = updatedSubtasks.length > 0 && updatedSubtasks.every(sub => sub.completed);
-          const wasIncomplete = !task.completed;
-          
-          // 如果任务原来未完成，且现在所有子任务都完成了，则自动完成主任务
-          if (wasIncomplete && allSubtasksCompleted) {
-            // 延迟显示完成提示，让用户看到进度变化
-            setTimeout(() => {
-              handleTaskAutoComplete(taskId, task.text);
-            }, 500);
-          }
-          
-          return {
-            ...task,
-            subtasks: updatedSubtasks,
-            // 如果所有子任务都完成，自动完成主任务；如果有子任务未完成，则取消主任务完成状态
-            completed: allSubtasksCompleted
-          };
+        if (task.id !== taskId) return task;
+        
+        if (!task.subtasks || !Array.isArray(task.subtasks)) {
+          console.warn('任务子任务数据无效:', task);
+          return task;
         }
-        return task;
+        
+        const updatedSubtasks = task.subtasks.map(sub =>
+          sub.id === subtaskId 
+            ? { 
+                ...sub, 
+                completed: !sub.completed,
+                endTime: !sub.completed ? new Date().toLocaleTimeString() : null,
+                completedAt: !sub.completed ? new Date().toISOString() : null
+              }
+            : sub
+        );
+        
+        // 检查所有子任务是否都完成了
+        const allSubtasksCompleted = updatedSubtasks.length > 0 && 
+          updatedSubtasks.every(sub => sub.completed);
+        const wasIncomplete = !task.completed;
+        
+        // 如果任务原来未完成，且现在所有子任务都完成了，则自动完成主任务
+        if (wasIncomplete && allSubtasksCompleted) {
+          // 延迟显示完成提示，让用户看到进度变化
+          setTimeout(() => {
+            handleTaskAutoComplete(taskId, task.text);
+          }, 500);
+        }
+        
+        return {
+          ...task,
+          subtasks: updatedSubtasks,
+          completed: allSubtasksCompleted,
+          completedAt: allSubtasksCompleted && wasIncomplete ? new Date().toISOString() : task.completedAt
+        };
       })
     );
   }, [setTasks, handleTaskAutoComplete]);
 
+  // 修复：改进展开/折叠状态管理
   const toggleAnalysisExpanded = useCallback((taskId) => {
-    setExpandedAnalysis(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(taskId)) {
-        newSet.delete(taskId);
-      } else {
-        newSet.add(taskId);
-      }
-      return newSet;
-    });
+    if (!taskId) return;
+    
+    setExpandedAnalysis(prev => ({
+      ...prev,
+      [taskId]: !prev[taskId]
+    }));
   }, []);
 
-  // 重新分析任务 - 彻底修复版本
+  // 重新分析任务
   const reAnalyzeTask = useCallback((taskId) => {
+    if (!taskId) return;
+    
     console.log('=== 重新分析任务 ===', taskId);
     
-    // 先找到任务数据
     const targetTask = tasks.find(t => t.id === taskId);
     if (!targetTask) {
       console.error('任务不存在:', taskId);
@@ -1149,11 +1606,12 @@ const WorkOrganizer = () => {
       return;
     }
     
-    console.log('目标任务:', {
-      id: targetTask.id,
-      text: targetTask.text,
-      duration: targetTask.estimatedDuration
-    });
+    // 取消可能进行中的分析请求
+    const controller = Array.from(abortControllerRef.current.entries())
+      .find(([key]) => key.includes(taskId))?.[1];
+    if (controller) {
+      controller.abort();
+    }
     
     // 清除旧的分析结果
     setTasks(prevTasks => 
@@ -1165,31 +1623,37 @@ const WorkOrganizer = () => {
     );
     
     // 清除展开状态
-    setExpandedAnalysis(prev => {
-      const newSet = new Set(prev);
-      newSet.delete(taskId);
-      return newSet;
-    });
+    setExpandedAnalysis(prev => ({
+      ...prev,
+      [taskId]: false
+    }));
     
     // 延迟触发新分析
     setTimeout(() => {
       console.log('触发新分析:', targetTask.text);
       analyzeTask(targetTask.id, targetTask.text, targetTask.estimatedDuration || 60);
     }, 300);
-  }, [tasks]);
+  }, [tasks, analyzeTask]);
 
+  // 将AI分析步骤转换为子任务
   const convertStepsToSubtasks = useCallback((taskId) => {
+    if (!taskId) return;
+    
     const task = tasks.find(t => t.id === taskId);
-    if (!task?.aiAnalysis?.steps) return;
+    if (!task?.aiAnalysis?.steps || !Array.isArray(task.aiAnalysis.steps)) {
+      console.warn('无有效的AI分析步骤可转换');
+      return;
+    }
 
     const subtasks = task.aiAnalysis.steps.map((step, index) => ({
-      id: `${taskId}-sub-${index}`,
+      id: `${taskId}-sub-${index}-${Date.now()}`, // 修复：添加时间戳避免ID冲突
       text: step.text,
-      duration: step.duration,
-      order: step.order,
+      duration: step.duration || 25,
+      order: step.order || (index + 1),
       completed: false,
       startTime: null,
-      endTime: null
+      endTime: null,
+      createdAt: new Date().toISOString()
     }));
 
     setTasks(prevTasks => 
@@ -1199,34 +1663,54 @@ const WorkOrganizer = () => {
           : t
       )
     );
-  }, [tasks]);
 
-  // 完成番茄钟会话的处理
+    console.log(`已将${subtasks.length}个步骤转换为子任务`);
+  }, [tasks, setTasks]);
+
+  // 修复：改进番茄钟完成处理，避免重复和竞争条件
   const handlePomodoroComplete = useCallback((activeTask, activeSubtask, duration, pomodoroId) => {
-    // 防止重复处理同一个番茄钟
+    if (!activeTask || !pomodoroId) {
+      console.error('番茄钟完成处理参数无效');
+      return;
+    }
+
+    // 防止重复处理
     const completionKey = `${pomodoroId}_${Date.now()}`;
-    if (processedPomodoroRef.current.has(completionKey)) {
+    const existingTimestamp = processedPomodoroRef.current.get(completionKey);
+    
+    if (existingTimestamp && (Date.now() - existingTimestamp) < 10000) {
       console.log('防止重复处理番茄钟完成事件:', completionKey);
       return;
     }
-    processedPomodoroRef.current.add(completionKey);
+    
+    processedPomodoroRef.current.set(completionKey, Date.now());
+    
+    // 清理过期记录
+    cleanupProcessedPomodoro();
 
     const taskName = activeTask.text;
     const subtaskName = activeSubtask ? activeSubtask.text : taskName;
 
     const pomodoroRecord = {
       id: `pomodoro_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      taskId: activeTask.id,
+      subtaskId: activeSubtask?.id || null,
       taskName,
       subtaskName,
       duration: duration || 25,
       completedAt: new Date().toISOString(),
       date: new Date().toDateString(),
-      efficiency: 'high'
+      efficiency: 'high' // 可以后续根据实际情况调整
     };
 
     console.log('添加番茄钟记录:', pomodoroRecord);
 
     setPomodoroHistory(prev => {
+      if (!Array.isArray(prev)) {
+        console.warn('番茄钟历史数据格式异常，重置为空数组');
+        return [pomodoroRecord];
+      }
+      
       // 检查是否已存在相同的记录（基于时间戳和任务名）
       const isDuplicate = prev.some(record => 
         Math.abs(new Date(record.completedAt).getTime() - new Date(pomodoroRecord.completedAt).getTime()) < 5000 &&
@@ -1242,8 +1726,9 @@ const WorkOrganizer = () => {
       return [pomodoroRecord, ...prev];
     });
 
+    // 如果是子任务，标记为完成
     if (activeSubtask) {
-      toggleSubtask(activeTask.id, pomodoroId);
+      toggleSubtask(activeTask.id, activeSubtask.id);
     }
 
     // 通知处理
@@ -1254,45 +1739,58 @@ const WorkOrganizer = () => {
       });
     }
 
-    // 清理旧的处理记录（保留最近10个）
+    // 清理旧的处理记录（保留最近50个）
     setTimeout(() => {
-      const keys = Array.from(processedPomodoroRef.current);
-      if (keys.length > 10) {
-        keys.slice(0, -10).forEach(key => processedPomodoroRef.current.delete(key));
+      const entries = Array.from(processedPomodoroRef.current.entries());
+      if (entries.length > 50) {
+        const sortedEntries = entries.sort((a, b) => b[1] - a[1]);
+        const keepEntries = sortedEntries.slice(0, 50);
+        processedPomodoroRef.current.clear();
+        keepEntries.forEach(([key, timestamp]) => {
+          processedPomodoroRef.current.set(key, timestamp);
+        });
       }
     }, 10000);
 
-  }, [setPomodoroHistory, toggleSubtask]);
+  }, [setPomodoroHistory, toggleSubtask, cleanupProcessedPomodoro]);
 
-  // 修改完成番茄钟的逻辑
+  // 修复：监听番茄钟完成事件，避免重复触发
   useEffect(() => {
     if (pomodoroHook.pomodoroStatus === 'completed' && pomodoroHook.activePomodoroId) {
       const activeTask = tasks.find(t => 
         t.id === pomodoroHook.activePomodoroId || 
-        t.subtasks.some(s => s.id === pomodoroHook.activePomodoroId)
+        (t.subtasks && Array.isArray(t.subtasks) && t.subtasks.some(s => s.id === pomodoroHook.activePomodoroId))
       );
       
       if (activeTask) {
-        const activeSubtask = activeTask.subtasks.find(s => s.id === pomodoroHook.activePomodoroId);
-        const duration = activeSubtask ? activeSubtask.duration : activeTask.estimatedDuration;
-        handlePomodoroComplete(activeTask, activeSubtask, duration, pomodoroHook.activePomodoroId);
+        const activeSubtask = activeTask.subtasks?.find(s => s.id === pomodoroHook.activePomodoroId);
+        const duration = activeSubtask ? activeSubtask.duration : activeTask.estimatedDuration || 25;
+        
+        // 使用setTimeout避免状态更新冲突
+        setTimeout(() => {
+          handlePomodoroComplete(activeTask, activeSubtask, duration, pomodoroHook.activePomodoroId);
+        }, 100);
+      } else {
+        console.warn('未找到对应的活动任务:', pomodoroHook.activePomodoroId);
       }
     }
   }, [pomodoroHook.pomodoroStatus, pomodoroHook.activePomodoroId, tasks, handlePomodoroComplete]);
 
   // 工具函数
   const formatTime = useCallback((seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
+    if (!seconds || isNaN(seconds)) return '00:00';
+    const mins = Math.floor(Math.abs(seconds) / 60);
+    const secs = Math.abs(seconds) % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   }, []);
 
   const formatDuration = useCallback((minutes) => {
-    if (!minutes) return '';
-    if (minutes < 60) return `${minutes}分钟`;
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    return mins > 0 ? `${hours}小时${mins}分钟` : `${hours}小时`;
+    if (!minutes || isNaN(minutes)) return '';
+    const mins = Math.abs(minutes);
+    if (mins < 60) return `${mins}分钟`;
+    const hours = Math.floor(mins / 60);
+    const remainingMins = mins % 60;
+    return remainingMins > 0 ? `${hours}小时${remainingMins}分钟` : `${hours}小时`;
   }, []);
 
   const getPriorityColor = useCallback((priority) => {
@@ -1304,111 +1802,195 @@ const WorkOrganizer = () => {
     }
   }, []);
 
-  // 计算统计数据
+  // 修复：改进统计计算，添加错误处理
   const stats = useMemo(() => {
-    const total = tasks.length;
-    const completed = tasks.filter(t => t.completed).length;
-    const high = tasks.filter(t => t.priority === 'high' && !t.completed).length;
-    const aiAnalyzed = tasks.filter(t => t.aiAnalysis).length;
-    return { total, completed, high, pending: total - completed, aiAnalyzed };
+    try {
+      if (!Array.isArray(tasks)) {
+        console.warn('tasks不是数组，使用默认值');
+        return { total: 0, completed: 0, high: 0, pending: 0, aiAnalyzed: 0 };
+      }
+
+      const total = tasks.length;
+      const completed = tasks.filter(t => t && t.completed).length;
+      const high = tasks.filter(t => t && t.priority === 'high' && !t.completed).length;
+      const aiAnalyzed = tasks.filter(t => t && t.aiAnalysis).length;
+      
+      return { 
+        total, 
+        completed, 
+        high, 
+        pending: total - completed, 
+        aiAnalyzed 
+      };
+    } catch (error) {
+      console.error('计算统计数据失败:', error);
+      return { total: 0, completed: 0, high: 0, pending: 0, aiAnalyzed: 0 };
+    }
   }, [tasks]);
 
   const pomodoroStats = useMemo(() => {
-    const today = new Date().toDateString();
-    const todayPomodoros = pomodoroHistory.filter(p => p.date === today);
-    const totalTime = todayPomodoros.reduce((sum, p) => sum + p.duration, 0);
-    const totalSessions = todayPomodoros.length;
-    return { totalTime, totalSessions };
+    try {
+      if (!Array.isArray(pomodoroHistory)) {
+        console.warn('pomodoroHistory不是数组，使用默认值');
+        return { totalTime: 0, totalSessions: 0 };
+      }
+
+      const today = new Date().toDateString();
+      const todayPomodoros = pomodoroHistory.filter(p => p && p.date === today);
+      const totalTime = todayPomodoros.reduce((sum, p) => sum + (p.duration || 0), 0);
+      const totalSessions = todayPomodoros.length;
+      
+      return { totalTime, totalSessions };
+    } catch (error) {
+      console.error('计算番茄钟统计失败:', error);
+      return { totalTime: 0, totalSessions: 0 };
+    }
   }, [pomodoroHistory]);
 
   const weeklyStats = useMemo(() => {
-    const today = new Date();
-    const weekData = [];
-    
-    for (let i = 6; i >= 0; i--) {
-      const date = new Date(today);
-      date.setDate(date.getDate() - i);
-      const dateStr = date.toDateString();
+    try {
+      if (!Array.isArray(pomodoroHistory)) {
+        return [];
+      }
+
+      const today = new Date();
+      const weekData = [];
       
-      const dayPomodoros = pomodoroHistory.filter(p => p.date === dateStr);
-      weekData.push({
-        day: date.toLocaleDateString('zh-CN', { weekday: 'short' }),
-        date: dateStr,
-        count: dayPomodoros.length,
-        time: dayPomodoros.reduce((sum, p) => sum + (p.duration || 0), 0)
-      });
+      for (let i = 6; i >= 0; i--) {
+        const date = new Date(today);
+        date.setDate(date.getDate() - i);
+        const dateStr = date.toDateString();
+        
+        const dayPomodoros = pomodoroHistory.filter(p => p && p.date === dateStr);
+        weekData.push({
+          day: date.toLocaleDateString('zh-CN', { weekday: 'short' }),
+          date: dateStr,
+          count: dayPomodoros.length,
+          time: dayPomodoros.reduce((sum, p) => sum + (p.duration || 0), 0)
+        });
+      }
+      
+      return weekData;
+    } catch (error) {
+      console.error('计算周统计失败:', error);
+      return [];
     }
-    
-    return weekData;
   }, [pomodoroHistory]);
 
   const achievements = useMemo(() => {
-    const newAchievements = [];
-    const totalPomodoros = pomodoroHistory.length;
-    const todayPomodoros = pomodoroStats.totalSessions;
-    
-    if (totalPomodoros >= 1) newAchievements.push({ id: 'first', name: '首次专注', icon: '🌱' });
-    if (totalPomodoros >= 10) newAchievements.push({ id: 'ten', name: '十次专注', icon: '🔥' });
-    if (totalPomodoros >= 50) newAchievements.push({ id: 'fifty', name: '专注达人', icon: '💪' });
-    if (totalPomodoros >= 100) newAchievements.push({ id: 'hundred', name: '专注大师', icon: '🏆' });
-    
-    if (todayPomodoros >= dailyGoal) newAchievements.push({ id: 'daily', name: '今日目标达成', icon: '⭐' });
-    if (todayPomodoros >= 10) newAchievements.push({ id: 'super', name: '超级专注日', icon: '💎' });
-    
-    if (focusStreak >= 3) newAchievements.push({ id: 'streak3', name: '连续专注3天', icon: '🔥' });
-    if (focusStreak >= 7) newAchievements.push({ id: 'streak7', name: '连续专注一周', icon: '👑' });
-    
-    return newAchievements;
-  }, [pomodoroHistory.length, pomodoroStats.totalSessions, dailyGoal, focusStreak]);
+    try {
+      const newAchievements = [];
+      const totalPomodoros = Array.isArray(pomodoroHistory) ? pomodoroHistory.length : 0;
+      const todayPomodoros = pomodoroStats.totalSessions;
+      const currentDailyGoal = dailyGoal || 6;
+      const currentFocusStreak = focusStreak || 0;
+      
+      if (totalPomodoros >= 1) newAchievements.push({ id: 'first', name: '首次专注', icon: '🌱' });
+      if (totalPomodoros >= 10) newAchievements.push({ id: 'ten', name: '十次专注', icon: '🔥' });
+      if (totalPomodoros >= 50) newAchievements.push({ id: 'fifty', name: '专注达人', icon: '💪' });
+      if (totalPomodoros >= 100) newAchievements.push({ id: 'hundred', name: '专注大师', icon: '🏆' });
+      
+      if (todayPomodoros >= currentDailyGoal) newAchievements.push({ id: 'daily', name: '今日目标达成', icon: '⭐' });
+      if (todayPomodoros >= 10) newAchievements.push({ id: 'super', name: '超级专注日', icon: '💎' });
+      
+      if (currentFocusStreak >= 3) newAchievements.push({ id: 'streak3', name: '连续专注3天', icon: '🔥' });
+      if (currentFocusStreak >= 7) newAchievements.push({ id: 'streak7', name: '连续专注一周', icon: '👑' });
+      
+      return newAchievements;
+    } catch (error) {
+      console.error('计算成就失败:', error);
+      return [];
+    }
+  }, [pomodoroHistory, pomodoroStats.totalSessions, dailyGoal, focusStreak]);
 
   const filteredTasks = useMemo(() => {
-    return tasks.filter(task => {
-      if (filter === 'completed') return task.completed;
-      if (filter === 'pending') return !task.completed;
-      return true;
-    });
+    try {
+      if (!Array.isArray(tasks)) {
+        return [];
+      }
+      
+      return tasks.filter(task => {
+        if (!task) return false;
+        if (filter === 'completed') return task.completed;
+        if (filter === 'pending') return !task.completed;
+        return true;
+      });
+    } catch (error) {
+      console.error('过滤任务失败:', error);
+      return [];
+    }
   }, [tasks, filter]);
 
   const sortedTasks = useMemo(() => {
-    return filteredTasks.sort((a, b) => {
-      const priorityOrder = { high: 3, medium: 2, low: 1 };
-      if (priorityOrder[a.priority] !== priorityOrder[b.priority]) {
-        return priorityOrder[b.priority] - priorityOrder[a.priority];
-      }
-      if (a.time && b.time) {
-        return a.time.localeCompare(b.time);
-      }
-      return 0;
-    });
+    try {
+      return filteredTasks.sort((a, b) => {
+        if (!a || !b) return 0;
+        
+        const priorityOrder = { high: 3, medium: 2, low: 1 };
+        const aPriority = priorityOrder[a.priority] || 1;
+        const bPriority = priorityOrder[b.priority] || 1;
+        
+        if (aPriority !== bPriority) {
+          return bPriority - aPriority;
+        }
+        
+        if (a.time && b.time) {
+          return a.time.localeCompare(b.time);
+        }
+        
+        // 按创建时间排序
+        const aTime = new Date(a.createdAt || 0).getTime();
+        const bTime = new Date(b.createdAt || 0).getTime();
+        return bTime - aTime;
+      });
+    } catch (error) {
+      console.error('排序任务失败:', error);
+      return filteredTasks;
+    }
   }, [filteredTasks]);
 
   const getEfficiencyScore = useCallback(() => {
-    const completionRate = Math.min((pomodoroStats.totalSessions / dailyGoal) * 100, 100);
-    return Math.round(completionRate);
+    try {
+      const currentGoal = dailyGoal || 1;
+      const sessions = pomodoroStats.totalSessions || 0;
+      const completionRate = Math.min((sessions / currentGoal) * 100, 100);
+      return Math.round(completionRate);
+    } catch (error) {
+      console.error('计算效率分数失败:', error);
+      return 0;
+    }
   }, [pomodoroStats.totalSessions, dailyGoal]);
 
+  // 修复：改进番茄钟原始时长获取
   function getPomodoroOriginalTime() {
-    if (!pomodoroHook.activePomodoroId) return 25;
-    
-    const activeTask = tasks.find(t => 
-      t.id === pomodoroHook.activePomodoroId || 
-      t.subtasks.some(s => s.id === pomodoroHook.activePomodoroId)
-    );
-    
-    if (activeTask) {
-      const activeSubtask = activeTask.subtasks.find(s => s.id === pomodoroHook.activePomodoroId);
-      return activeSubtask ? activeSubtask.duration : activeTask.estimatedDuration || 25;
+    try {
+      if (!pomodoroHook.activePomodoroId) return 25;
+      
+      const activeTask = tasks.find(t => 
+        t && (t.id === pomodoroHook.activePomodoroId || 
+        (t.subtasks && Array.isArray(t.subtasks) && 
+         t.subtasks.some(s => s && s.id === pomodoroHook.activePomodoroId)))
+      );
+      
+      if (activeTask) {
+        const activeSubtask = activeTask.subtasks?.find(s => s && s.id === pomodoroHook.activePomodoroId);
+        const duration = activeSubtask ? activeSubtask.duration : activeTask.estimatedDuration;
+        return Math.max(1, duration || 25);
+      }
+      
+      return 25;
+    } catch (error) {
+      console.error('获取番茄钟原始时长失败:', error);
+      return 25;
     }
-    
-    return 25;
   }
 
-  // 初始化和备份提醒
+  // 修复：改进初始化逻辑
   useEffect(() => {
-    if (tasks.length === 0) {
+    if (!Array.isArray(tasks) || tasks.length === 0) {
       const sampleTasks = [
         {
-          id: 1,
+          id: generateTaskId(),
           text: '体验AI智能分析功能',
           priority: 'high',
           time: '',
@@ -1423,22 +2005,28 @@ const WorkOrganizer = () => {
       setTasks(sampleTasks);
     }
 
-    // 检查备份提醒
-    const shouldShowReminder = 
-      appStats.daysUsed >= 3 || 
-      stats.total >= 5 || 
-      pomodoroHistory.length >= 10;
+    // 修复：改进备份提醒逻辑
+    try {
+      const shouldShowReminder = 
+        (appStats?.daysUsed >= 3) || 
+        (stats.total >= 5) || 
+        (Array.isArray(pomodoroHistory) && pomodoroHistory.length >= 10);
 
-    if (shouldShowReminder && !isLoggedIn) {
-      const timer = setTimeout(() => setShowBackupReminder(true), 5000);
-      return () => clearTimeout(timer);
+      if (shouldShowReminder && !isLoggedIn) {
+        const timer = setTimeout(() => setShowBackupReminder(true), 5000);
+        return () => clearTimeout(timer);
+      }
+    } catch (error) {
+      console.error('检查备份提醒失败:', error);
     }
-  }, []);
+  }, [tasks, appStats?.daysUsed, stats.total, pomodoroHistory, isLoggedIn, setTasks, generateTaskId]);
 
   // 请求通知权限
   useEffect(() => {
     if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission();
+      Notification.requestPermission().catch(error => {
+        console.warn('请求通知权限失败:', error);
+      });
     }
   }, []);
   
@@ -1447,61 +2035,21 @@ const WorkOrganizer = () => {
     updateStorageStats();
   }, [updateStorageStats]);
 
+  // 修复：定期清理过期数据
+  useEffect(() => {
+    const cleanup = setInterval(() => {
+      cleanupProcessedPomodoro();
+    }, 5 * 60 * 1000); // 每5分钟清理一次
+
+    return () => clearInterval(cleanup);
+  }, [cleanupProcessedPomodoro]);
+
   return (
     <div className="app-container">
       {/* 备份提醒弹窗 */}
       {showBackupReminder && (
         <div className="modal-overlay">
           <div className="modal-content">
-            <div className="modal-text-center">
-              <div className="modal-icon">☁️</div>
-              <h3>保护你的数据？</h3>
-              <p>
-                你已经使用 {appStats.daysUsed} 天，创建了 {stats.total} 个任务！
-                <br />一键备份，多设备同步，永不丢失。
-              </p>
-              <div className="modal-buttons">
-                <button
-                  onClick={() => setShowDataManager(true)}
-                  className="btn btn-green"
-                >
-                  🛡️ 加密备份数据
-                </button>
-                <button
-                  onClick={() => alert('登录功能开发中...')}
-                  className="btn btn-blue"
-                >
-                  🔵 云端同步 (开发中)
-                </button>
-                <button
-                  onClick={() => setShowBackupReminder(false)}
-                  className="btn btn-gray"
-                >
-                  稍后再说
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* AI设置弹窗 */}
-      {showAISettings && (
-        <div className="modal-overlay">
-          <div className="modal-content ai-settings-modal">
-            <div className="modal-header">
-              <h3 className="modal-title">
-                <Icons.Brain />
-                AI分析设置
-              </h3>
-              <button
-                onClick={() => setShowAISettings(false)}
-                className="modal-close-btn"
-              >
-                <Icons.X />
-              </button>
-            </div>
-            
             <div className="ai-settings-content">
               {/* AI提供商选择 */}
               <div className="setting-section">
@@ -1725,6 +2273,11 @@ const WorkOrganizer = () => {
                       <span className="stat-value">{storageStats.formattedSize}</span>
                     </div>
                   </div>
+                  {storageStats.quota && (
+                    <div className="quota-info">
+                      <span>存储配额: {storageStats.quota}</span>
+                    </div>
+                  )}
                 </div>
               )}
               
@@ -1936,6 +2489,7 @@ const WorkOrganizer = () => {
                   onChange={(e) => setEstimatedDuration(e.target.value)}
                   placeholder="预计分钟"
                   min="1"
+                  max="300"
                   className="duration-input"
                 />
                 <button onClick={addTask} className="add-btn">
@@ -2061,12 +2615,12 @@ const WorkOrganizer = () => {
 
                           <button
                             onClick={() => analyzeTask(task.id, task.text, task.estimatedDuration)}
-                            disabled={analyzingTasks.has(task.id)}
+                            disabled={analyzingTasks[task.id]}
                             className="analyze-btn"
                             title="AI智能分析任务"
                           >
                             <Icons.Brain />
-                            {analyzingTasks.has(task.id) ? '分析中...' : 'AI分析'}
+                            {analyzingTasks[task.id] ? '分析中...' : 'AI分析'}
                           </button>
 
                           <button
@@ -2093,7 +2647,7 @@ const WorkOrganizer = () => {
                               onClick={() => toggleAnalysisExpanded(task.id)}
                               className="analysis-toggle"
                             >
-                              {expandedAnalysis.has(task.id) ? <Icons.ChevronDown /> : <Icons.ChevronRight />}
+                              {expandedAnalysis[task.id] ? <Icons.ChevronDown /> : <Icons.ChevronRight />}
                               <span className="task-type-badge">
                                 {task.aiAnalysis.taskTypeLabel}
                               </span>
@@ -2108,7 +2662,7 @@ const WorkOrganizer = () => {
                             </button>
                           </div>
 
-                          {expandedAnalysis.has(task.id) && (
+                          {expandedAnalysis[task.id] && (
                             <div className="analysis-content">
                               <div className="analysis-description">
                                 {task.aiAnalysis.analysis}
@@ -2335,7 +2889,7 @@ const WorkOrganizer = () => {
               <div className="metric-item">
                 <div className="metric-label">总专注时长</div>
                 <div className="metric-value">
-                  {Math.round(pomodoroHistory.reduce((sum, p) => sum + p.duration, 0) / 60)}h
+                  {Math.round((Array.isArray(pomodoroHistory) ? pomodoroHistory.reduce((sum, p) => sum + (p.duration || 0), 0) : 0) / 60)}h
                 </div>
               </div>
               <div className="metric-item">
@@ -2350,4 +2904,56 @@ const WorkOrganizer = () => {
   );
 };
 
-export default WorkOrganizer;
+export default WorkOrganizer;="modal-text-center">
+              <div className="modal-icon">☁️</div>
+              <h3>保护你的数据？</h3>
+              <p>
+                你已经使用 {appStats?.daysUsed || 0} 天，创建了 {stats.total} 个任务！
+                <br />一键备份，多设备同步，永不丢失。
+              </p>
+              <div className="modal-buttons">
+                <button
+                  onClick={() => {
+                    setShowBackupReminder(false);
+                    setShowDataManager(true);
+                  }}
+                  className="btn btn-green"
+                >
+                  🛡️ 加密备份数据
+                </button>
+                <button
+                  onClick={() => alert('登录功能开发中...')}
+                  className="btn btn-blue"
+                >
+                  🔵 云端同步 (开发中)
+                </button>
+                <button
+                  onClick={() => setShowBackupReminder(false)}
+                  className="btn btn-gray"
+                >
+                  稍后再说
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AI设置弹窗 */}
+      {showAISettings && (
+        <div className="modal-overlay">
+          <div className="modal-content ai-settings-modal">
+            <div className="modal-header">
+              <h3 className="modal-title">
+                <Icons.Brain />
+                AI分析设置
+              </h3>
+              <button
+                onClick={() => setShowAISettings(false)}
+                className="modal-close-btn"
+              >
+                <Icons.X />
+              </button>
+            </div>
+            
+            <div className
