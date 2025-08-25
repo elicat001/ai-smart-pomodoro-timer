@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 
 const OptimizedPomodoro = () => {
-  // 核心状态 - 大幅简化
+  // 核心状态
   const [currentTask, setCurrentTask] = useState('');
   const [timeLeft, setTimeLeft] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
@@ -9,10 +9,22 @@ const OptimizedPomodoro = () => {
   const [suggestedDuration, setSuggestedDuration] = useState(25);
   const [sessionCount, setSessionCount] = useState(0);
   const [isBreak, setIsBreak] = useState(false);
+  const [windowWidth, setWindowWidth] = useState(1200);
 
   const intervalRef = useRef(null);
   const audioRef = useRef(null);
   const inputRef = useRef(null);
+
+  // 窗口尺寸监听
+  useEffect(() => {
+    const updateWindowWidth = () => {
+      setWindowWidth(window.innerWidth);
+    };
+
+    updateWindowWidth();
+    window.addEventListener('resize', updateWindowWidth);
+    return () => window.removeEventListener('resize', updateWindowWidth);
+  }, []);
 
   // 智能时长推荐
   const suggestDuration = useCallback((taskText) => {
@@ -20,7 +32,6 @@ const OptimizedPomodoro = () => {
     
     const text = taskText.toLowerCase();
     
-    // 基于任务类型的智能建议
     if (text.includes('会议') || text.includes('讨论')) return 60;
     if (text.includes('阅读') || text.includes('学习')) return 45;
     if (text.includes('写作') || text.includes('文档')) return 40;
@@ -28,7 +39,6 @@ const OptimizedPomodoro = () => {
     if (text.includes('设计') || text.includes('创作')) return 35;
     if (text.includes('邮件') || text.includes('回复')) return 15;
     
-    // 基于任务长度的粗略估算
     if (text.length > 50) return 45;
     if (text.length > 20) return 35;
     
@@ -69,12 +79,10 @@ const OptimizedPomodoro = () => {
   const handleSessionComplete = useCallback(() => {
     setIsRunning(false);
     
-    // 音效提示
     if (audioRef.current) {
       audioRef.current.play().catch(() => {});
     }
     
-    // 浏览器通知
     if ('Notification' in window && Notification.permission === 'granted') {
       new Notification(
         isBreak ? '休息结束，开始工作！' : '专注完成，该休息了！',
@@ -86,14 +94,12 @@ const OptimizedPomodoro = () => {
     }
     
     if (!isBreak) {
-      // 工作会话完成，开始休息
       setSessionCount(prev => prev + 1);
       setIsBreak(true);
-      const breakTime = (sessionCount + 1) % 4 === 0 ? 15 : 5; // 每4个番茄钟长休息
+      const breakTime = (sessionCount + 1) % 4 === 0 ? 15 : 5;
       setTimeLeft(breakTime * 60);
-      setIsFocusMode(false); // 退出专注模式
+      setIsFocusMode(false);
     } else {
-      // 休息完成，准备下一个工作会话
       setIsBreak(false);
       setTimeLeft(suggestedDuration * 60);
     }
@@ -102,7 +108,6 @@ const OptimizedPomodoro = () => {
   // 键盘快捷键
   useEffect(() => {
     const handleKeyPress = (e) => {
-      // 只在非输入状态下响应快捷键
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
       
       switch (e.code) {
@@ -116,8 +121,8 @@ const OptimizedPomodoro = () => {
           e.preventDefault();
           if (!isRunning && currentTask.trim()) {
             startFocusSession();
-          } else {
-            inputRef.current?.focus();
+          } else if (inputRef.current) {
+            inputRef.current.focus();
           }
           break;
         case 'Escape':
@@ -132,6 +137,8 @@ const OptimizedPomodoro = () => {
             setIsFocusMode(!isFocusMode);
           }
           break;
+        default:
+          break;
       }
     };
 
@@ -139,26 +146,22 @@ const OptimizedPomodoro = () => {
     return () => document.removeEventListener('keydown', handleKeyPress);
   }, [isRunning, currentTask, timeLeft, isFocusMode]);
 
-  // 开始专注会话
   const startFocusSession = useCallback(() => {
     if (!currentTask.trim()) return;
     
     setIsRunning(true);
     setIsFocusMode(true);
     
-    // 请求通知权限
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission();
     }
   }, [currentTask]);
 
-  // 退出专注模式
   const exitFocusMode = useCallback(() => {
     setIsFocusMode(false);
     setIsRunning(false);
   }, []);
 
-  // 重置会话
   const resetSession = useCallback(() => {
     setIsRunning(false);
     setIsFocusMode(false);
@@ -166,14 +169,12 @@ const OptimizedPomodoro = () => {
     setTimeLeft(suggestedDuration * 60);
   }, [suggestedDuration]);
 
-  // 格式化时间
   const formatTime = useCallback((seconds) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   }, []);
 
-  // 计算进度
   const progress = useMemo(() => {
     const totalTime = isBreak ? 
       ((sessionCount % 4 === 0 && sessionCount > 0) ? 15 * 60 : 5 * 60) : 
@@ -181,7 +182,6 @@ const OptimizedPomodoro = () => {
     return totalTime > 0 ? ((totalTime - timeLeft) / totalTime) * 100 : 0;
   }, [timeLeft, isBreak, sessionCount, suggestedDuration]);
 
-  // 获取当前模式信息
   const getModeInfo = useCallback(() => {
     if (isBreak) {
       const isLongBreak = sessionCount % 4 === 0 && sessionCount > 0;
@@ -204,8 +204,9 @@ const OptimizedPomodoro = () => {
   }, [isBreak, sessionCount]);
 
   const modeInfo = getModeInfo();
+  const showSidebar = windowWidth > 1200;
 
-  // 沉浸式专注模式渲染
+  // 沉浸式专注模式
   if (isFocusMode) {
     return (
       <div style={{
@@ -223,12 +224,10 @@ const OptimizedPomodoro = () => {
         color: 'white',
         userSelect: 'none'
       }}>
-        {/* 音频元素 */}
         <audio ref={audioRef} preload="auto">
           <source src="data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+Dfm2AcCj+S3/LGeCUFLYHF8dycRAkVYrjn6aZUFAlGnu/mnFwbDD+Y2u/FeSUGKH/I8dyaQAoUYLXp6qZTFAhGneXmo2IbCjaA2uu8cSMEJn/L9N2Xvj4HGm297OytUxcFADGS2fLWfSwFJX7H8N2hT" type="audio/wav" />
         </audio>
 
-        {/* 当前任务显示 */}
         <div style={{
           fontSize: '24px',
           fontWeight: '300',
@@ -240,7 +239,6 @@ const OptimizedPomodoro = () => {
           {isBreak ? modeInfo.title : `正在专注：${currentTask}`}
         </div>
 
-        {/* 大型计时器 */}
         <div style={{
           fontSize: '120px',
           fontWeight: '100',
@@ -251,7 +249,6 @@ const OptimizedPomodoro = () => {
           {formatTime(timeLeft)}
         </div>
 
-        {/* 进度环 */}
         <div style={{
           position: 'relative',
           width: '200px',
@@ -292,7 +289,6 @@ const OptimizedPomodoro = () => {
           </div>
         </div>
 
-        {/* 控制按钮 */}
         <div style={{
           display: 'flex',
           gap: '24px',
@@ -312,14 +308,6 @@ const OptimizedPomodoro = () => {
               boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
               transition: 'all 0.3s ease'
             }}
-            onMouseEnter={(e) => {
-              e.target.style.transform = 'translateY(-2px)';
-              e.target.style.boxShadow = '0 8px 20px rgba(0,0,0,0.3)';
-            }}
-            onMouseLeave={(e) => {
-              e.target.style.transform = 'translateY(0)';
-              e.target.style.boxShadow = '0 4px 12px rgba(0,0,0,0.2)';
-            }}
           >
             {isRunning ? '暂停' : '继续'}
           </button>
@@ -337,18 +325,11 @@ const OptimizedPomodoro = () => {
               cursor: 'pointer',
               transition: 'all 0.3s ease'
             }}
-            onMouseEnter={(e) => {
-              e.target.style.backgroundColor = 'rgba(255,255,255,0.1)';
-            }}
-            onMouseLeave={(e) => {
-              e.target.style.backgroundColor = 'transparent';
-            }}
           >
             退出专注
           </button>
         </div>
 
-        {/* 快捷键提示 */}
         <div style={{
           position: 'absolute',
           bottom: '32px',
@@ -359,7 +340,6 @@ const OptimizedPomodoro = () => {
           空格键：暂停/继续 | Esc：退出专注模式
         </div>
 
-        {/* 会话计数 */}
         <div style={{
           position: 'absolute',
           top: '32px',
@@ -373,7 +353,7 @@ const OptimizedPomodoro = () => {
     );
   }
 
-  // 正常模式渲染
+  // 正常模式
   return (
     <div style={{
       minHeight: '100vh',
@@ -385,181 +365,299 @@ const OptimizedPomodoro = () => {
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
     }}>
       <div style={{
-        backgroundColor: 'white',
-        borderRadius: '24px',
-        padding: '48px',
-        boxShadow: '0 20px 40px rgba(0,0,0,0.15)',
-        maxWidth: '600px',
+        display: 'grid',
+        gridTemplateColumns: showSidebar ? '1fr 400px' : '1fr',
+        gap: '32px',
+        maxWidth: '1200px',
         width: '100%',
-        textAlign: 'center'
+        alignItems: 'start'
       }}>
-        {/* 标题 */}
-        <h1 style={{
-          fontSize: '32px',
-          margin: '0 0 48px 0',
-          color: '#2c3e50',
-          fontWeight: '300'
+        {/* 主要内容区域 */}
+        <div style={{
+          backgroundColor: 'white',
+          borderRadius: '24px',
+          padding: '48px',
+          boxShadow: '0 20px 40px rgba(0,0,0,0.15)',
+          textAlign: 'center'
         }}>
-          智能专注助手
-        </h1>
-
-        {/* 任务输入 */}
-        <div style={{ marginBottom: '32px' }}>
-          <input
-            ref={inputRef}
-            type="text"
-            value={currentTask}
-            onChange={(e) => setCurrentTask(e.target.value)}
-            placeholder="现在要专注做什么？（按回车开始）"
-            style={{
-              width: '100%',
-              padding: '20px',
-              fontSize: '18px',
-              border: '2px solid #f1f3f4',
-              borderRadius: '16px',
-              outline: 'none',
-              transition: 'all 0.3s ease',
-              backgroundColor: '#fafafa'
-            }}
-            onFocus={(e) => {
-              e.target.style.borderColor = '#667eea';
-              e.target.style.backgroundColor = 'white';
-            }}
-            onBlur={(e) => {
-              e.target.style.borderColor = '#f1f3f4';
-              e.target.style.backgroundColor = '#fafafa';
-            }}
-            onKeyPress={(e) => {
-              if (e.key === 'Enter' && currentTask.trim()) {
-                startFocusSession();
-              }
-            }}
-          />
-        </div>
-
-        {/* 智能建议 */}
-        {currentTask.trim() && (
-          <div style={{
-            marginBottom: '32px',
-            padding: '16px',
-            backgroundColor: '#f8f9fa',
-            borderRadius: '12px',
-            textAlign: 'left'
+          <h1 style={{
+            fontSize: '32px',
+            margin: '0 0 48px 0',
+            color: '#2c3e50',
+            fontWeight: '300'
           }}>
+            智能专注助手
+          </h1>
+
+          <div style={{ marginBottom: '32px' }}>
+            <input
+              ref={inputRef}
+              type="text"
+              value={currentTask}
+              onChange={(e) => setCurrentTask(e.target.value)}
+              placeholder="现在要专注做什么？（按回车开始）"
+              style={{
+                width: '100%',
+                padding: '20px',
+                fontSize: '18px',
+                border: '2px solid #f1f3f4',
+                borderRadius: '16px',
+                outline: 'none',
+                transition: 'all 0.3s ease',
+                backgroundColor: '#fafafa'
+              }}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter' && currentTask.trim()) {
+                  startFocusSession();
+                }
+              }}
+            />
+          </div>
+
+          {currentTask.trim() && (
             <div style={{
-              fontSize: '14px',
-              fontWeight: '600',
-              marginBottom: '8px',
-              color: '#666',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
+              marginBottom: '32px',
+              padding: '16px',
+              backgroundColor: '#f8f9fa',
+              borderRadius: '12px',
+              textAlign: 'left'
             }}>
-              💡 智能建议
+              <div style={{
+                fontSize: '14px',
+                fontWeight: '600',
+                marginBottom: '8px',
+                color: '#666',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                💡 智能建议
+              </div>
+              <div style={{ fontSize: '14px', color: '#666' }}>
+                建议专注时长：{suggestedDuration} 分钟
+              </div>
+              {suggestedDuration !== 25 && (
+                <div style={{ fontSize: '12px', color: '#999', marginTop: '4px' }}>
+                  基于任务类型自动调整
+                </div>
+              )}
             </div>
-            <div style={{ fontSize: '14px', color: '#666' }}>
-              建议专注时长：{suggestedDuration} 分钟
+          )}
+
+          {timeLeft > 0 && (
+            <div style={{ marginBottom: '32px' }}>
+              <div style={{
+                fontSize: '48px',
+                fontWeight: '300',
+                color: modeInfo.color,
+                marginBottom: '16px'
+              }}>
+                {formatTime(timeLeft)}
+              </div>
+              
+              <div style={{
+                width: '100%',
+                height: '8px',
+                backgroundColor: '#f1f3f4',
+                borderRadius: '4px',
+                overflow: 'hidden',
+                marginBottom: '16px'
+              }}>
+                <div style={{
+                  width: `${progress}%`,
+                  height: '100%',
+                  backgroundColor: modeInfo.color,
+                  transition: 'width 1s linear'
+                }} />
+              </div>
+
+              <div style={{ fontSize: '16px', color: '#666' }}>
+                {modeInfo.title} - 今日已完成 {sessionCount} 个番茄钟
+              </div>
             </div>
-            {suggestedDuration !== 25 && (
-              <div style={{ fontSize: '12px', color: '#999', marginTop: '4px' }}>
-                基于任务类型自动调整
+          )}
+
+          <div style={{
+            display: 'flex',
+            gap: '16px',
+            justifyContent: 'center',
+            marginBottom: '24px'
+          }}>
+            {timeLeft > 0 ? (
+              <>
+                <button
+                  onClick={startFocusSession}
+                  disabled={!currentTask.trim()}
+                  style={{
+                    padding: '16px 32px',
+                    fontSize: '18px',
+                    fontWeight: '600',
+                    color: 'white',
+                    backgroundColor: !currentTask.trim() ? '#ccc' : '#667eea',
+                    border: 'none',
+                    borderRadius: '12px',
+                    cursor: !currentTask.trim() ? 'not-allowed' : 'pointer',
+                    transition: 'all 0.3s ease'
+                  }}
+                >
+                  进入专注模式
+                </button>
+                
+                <button
+                  onClick={resetSession}
+                  style={{
+                    padding: '16px 24px',
+                    fontSize: '16px',
+                    color: '#666',
+                    backgroundColor: 'transparent',
+                    border: '2px solid #e1e8ed',
+                    borderRadius: '12px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  重置
+                </button>
+              </>
+            ) : (
+              <div style={{ padding: '20px', color: '#666' }}>
+                输入任务内容开始专注
               </div>
             )}
           </div>
-        )}
 
-        {/* 当前状态 */}
-        {timeLeft > 0 && (
-          <div style={{ marginBottom: '32px' }}>
-            <div style={{
-              fontSize: '48px',
-              fontWeight: '300',
-              color: modeInfo.color,
-              marginBottom: '16px'
-            }}>
-              {formatTime(timeLeft)}
+          <div style={{
+            fontSize: '12px',
+            color: '#999',
+            borderTop: '1px solid #f1f3f4',
+            paddingTop: '16px'
+          }}>
+            快捷键：回车开始 | 空格暂停/继续 | Shift+Tab切换模式
+          </div>
+        </div>
+
+        {/* 侧边栏 */}
+        {showSidebar && (
+          <div style={{
+            backgroundColor: 'rgba(255, 255, 255, 0.95)',
+            borderRadius: '24px',
+            padding: '32px',
+            boxShadow: '0 12px 24px rgba(0,0,0,0.1)',
+            backdropFilter: 'blur(10px)'
+          }}>
+            <div style={{ marginBottom: '32px' }}>
+              <h3 style={{
+                fontSize: '18px',
+                margin: '0 0 16px 0',
+                color: '#2c3e50',
+                fontWeight: '600'
+              }}>
+                今日统计
+              </h3>
+              <div style={{ display: 'grid', gap: '12px' }}>
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '12px',
+                  backgroundColor: '#f8f9fa',
+                  borderRadius: '8px'
+                }}>
+                  <span style={{ color: '#666', fontSize: '14px' }}>完成番茄钟</span>
+                  <span style={{ 
+                    fontSize: '18px', 
+                    fontWeight: 'bold', 
+                    color: '#e74c3c' 
+                  }}>
+                    {sessionCount}
+                  </span>
+                </div>
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '12px',
+                  backgroundColor: '#f8f9fa',
+                  borderRadius: '8px'
+                }}>
+                  <span style={{ color: '#666', fontSize: '14px' }}>专注时长</span>
+                  <span style={{ 
+                    fontSize: '18px', 
+                    fontWeight: 'bold', 
+                    color: '#27ae60' 
+                  }}>
+                    {Math.floor(sessionCount * 25 / 60)}h{(sessionCount * 25) % 60}m
+                  </span>
+                </div>
+              </div>
             </div>
-            
-            <div style={{
-              width: '100%',
-              height: '8px',
-              backgroundColor: '#f1f3f4',
-              borderRadius: '4px',
-              overflow: 'hidden',
-              marginBottom: '16px'
-            }}>
+
+            <div style={{ marginBottom: '32px' }}>
+              <h3 style={{
+                fontSize: '18px',
+                margin: '0 0 16px 0',
+                color: '#2c3e50',
+                fontWeight: '600'
+              }}>
+                专注建议
+              </h3>
               <div style={{
-                width: `${progress}%`,
-                height: '100%',
-                backgroundColor: modeInfo.color,
-                transition: 'width 1s linear'
-              }} />
+                padding: '16px',
+                backgroundColor: '#e8f4fd',
+                borderRadius: '12px',
+                borderLeft: '4px solid #3498db'
+              }}>
+                <div style={{
+                  fontSize: '14px',
+                  color: '#2c3e50',
+                  lineHeight: '1.5'
+                }}>
+                  {sessionCount === 0 && "开始你的第一个专注会话，建议选择一个具体明确的任务"}
+                  {sessionCount >= 1 && sessionCount < 4 && "保持节奏，每个番茄钟后记得休息5分钟"}
+                  {sessionCount >= 4 && "已完成多个番茄钟，考虑安排15分钟长休息"}
+                </div>
+              </div>
             </div>
 
-            <div style={{ fontSize: '16px', color: '#666' }}>
-              {modeInfo.title} - 今日已完成 {sessionCount} 个番茄钟
+            <div>
+              <h3 style={{
+                fontSize: '18px',
+                margin: '0 0 16px 0',
+                color: '#2c3e50',
+                fontWeight: '600'
+              }}>
+                快捷键
+              </h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {[
+                  { key: '回车', desc: '快速开始专注' },
+                  { key: '空格', desc: '暂停/继续计时' },
+                  { key: 'Esc', desc: '退出专注模式' }
+                ].map((tip, index) => (
+                  <div key={index} style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    fontSize: '13px'
+                  }}>
+                    <kbd style={{
+                      padding: '2px 6px',
+                      backgroundColor: '#f1f3f4',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '4px',
+                      fontSize: '11px',
+                      fontFamily: 'monospace',
+                      minWidth: '40px',
+                      textAlign: 'center'
+                    }}>
+                      {tip.key}
+                    </kbd>
+                    <span style={{ color: '#666' }}>{tip.desc}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}
-
-        {/* 主要操作按钮 */}
-        <div style={{
-          display: 'flex',
-          gap: '16px',
-          justifyContent: 'center',
-          marginBottom: '24px'
-        }}>
-          {timeLeft > 0 ? (
-            <>
-              <button
-                onClick={startFocusSession}
-                disabled={!currentTask.trim()}
-                style={{
-                  padding: '16px 32px',
-                  fontSize: '18px',
-                  fontWeight: '600',
-                  color: 'white',
-                  backgroundColor: !currentTask.trim() ? '#ccc' : '#667eea',
-                  border: 'none',
-                  borderRadius: '12px',
-                  cursor: !currentTask.trim() ? 'not-allowed' : 'pointer',
-                  transition: 'all 0.3s ease'
-                }}
-              >
-                进入专注模式
-              </button>
-              
-              <button
-                onClick={resetSession}
-                style={{
-                  padding: '16px 24px',
-                  fontSize: '16px',
-                  color: '#666',
-                  backgroundColor: 'transparent',
-                  border: '2px solid #e1e8ed',
-                  borderRadius: '12px',
-                  cursor: 'pointer'
-                }}
-              >
-                重置
-              </button>
-            </>
-          ) : (
-            <div style={{ padding: '20px', color: '#666' }}>
-              输入任务内容开始专注
-            </div>
-          )}
-        </div>
-
-        {/* 快捷键提示 */}
-        <div style={{
-          fontSize: '12px',
-          color: '#999',
-          borderTop: '1px solid #f1f3f4',
-          paddingTop: '16px'
-        }}>
-          快捷键：回车开始 | 空格暂停/继续 | Shift+Tab切换模式
-        </div>
       </div>
     </div>
   );
